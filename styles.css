@@ -402,3 +402,15 @@ button.acct-row { font: inherit; color: inherit; }
 }
 .donut-big .donut-total { font-size: 5px; }
 .donut-big .donut-sub { font-size: 2.7px; }
+
+/* Search clear button */
+.search-box { position: relative; flex: 1; }
+.search-box input { width: 100%; padding-right: 40px; }
+.search-box input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.search-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; border: 0; border-radius: 50%;
+  background: var(--track); color: var(--muted); font-size: 20px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0 0 2px; }
+.search-clear[hidden] { display: none; }
+
+/* Split */
+.split-part { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; }
+.split-rest { min-height: 44px; display: flex; align-items: center; padding: 0 12px; border-radius: 10px; background: var(--track); font-weight: 600; }

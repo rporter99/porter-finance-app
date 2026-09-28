@@ -94,6 +94,14 @@
   const demoGoals = [{ row: 2, name: 'Emergency fund', target: 25000, date: (() => { const d = new Date(); d.setMonth(d.getMonth() + 10); return key(d).slice(0, 7); })(), number: accounts[1].number }];
 
   window.DEMO_SOURCE = {
+    async splitTransaction(t, parts) {
+      await new Promise((r) => setTimeout(r, 400));
+      const i = txns.indexOf(t);
+      const base = t.id.replace(/^split:(.+)\[\d+\]$/, '$1');
+      const copy = { ...t, id: `split:${base}[2]`, amount: parts[1].amount, category: parts[1].category, note: '', ask: false };
+      Object.assign(t, { id: t.id.startsWith('split:') ? t.id : `split:${base}[1]`, amount: parts[0].amount, category: parts[0].category });
+      txns.splice(i + 1, 0, copy);
+    },
     async setFieldBatch(field, items) {
       await new Promise((r) => setTimeout(r, 200));
       return items.length;

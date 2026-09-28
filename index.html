@@ -61,7 +61,10 @@
         <div id="tx-hero"></div>
         <div class="tx-controls">
           <div class="search-row">
-            <input id="tx-search" type="search" placeholder="Search" autocomplete="off" autocorrect="off" spellcheck="false">
+            <div class="search-box">
+              <input id="tx-search" type="search" placeholder="Search" autocomplete="off" autocorrect="off" spellcheck="false">
+              <button id="search-clear" class="search-clear" aria-label="Clear search" hidden>×</button>
+            </div>
             <button id="filter-btn" class="filter-btn" aria-label="Filters">
               <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
               <span id="filter-count" class="filter-count" hidden></span>
@@ -119,6 +122,7 @@
       <div class="sheet-actions"><button id="sheet-close" class="text-btn">Cancel</button><button id="sheet-save" class="btn-mini" hidden>Save ✓</button></div>
     </div>
     <div id="tx-extras" class="tx-extras" hidden>
+      <div class="extras-row" id="split-row"><span class="muted small">Two categories?</span><button id="split-open" class="chip small-chip">Split</button></div>
       <div class="extras-row" id="ask-row"><span class="muted small">Ask about this</span><button id="ask-toggle" class="chip small-chip">Ask</button></div>
     </div>
     <textarea id="tx-note" rows="2" placeholder="Add a note" hidden></textarea>
@@ -138,6 +142,23 @@
     <p id="goal-error" class="error" hidden></p>
     <button id="goal-save" class="btn-primary">Save goal</button>
     <button id="goal-delete" class="text-btn danger-text" hidden>Delete goal</button>
+  </div>
+
+  <!-- Split a transaction -->
+  <div id="split-backdrop" class="sheet-backdrop" hidden></div>
+  <div id="split-sheet" class="sheet goal-sheet" role="dialog" aria-modal="true" aria-labelledby="split-title" hidden>
+    <div class="sheet-handle"></div>
+    <div class="sheet-head"><div><div id="split-title" class="sheet-title"></div><div id="split-total" class="muted small"></div></div><button id="split-cancel" class="text-btn">Cancel</button></div>
+    <div class="split-part">
+      <label class="field"><span>First part</span><input id="split-amt1" type="text" inputmode="decimal" placeholder="Amount"></label>
+      <label class="field"><span>Category</span><select id="split-cat1"></select></label>
+    </div>
+    <div class="split-part">
+      <div class="field"><span>The rest</span><div id="split-amt2" class="split-rest">—</div></div>
+      <label class="field"><span>Category</span><select id="split-cat2"></select></label>
+    </div>
+    <p id="split-error" class="error" hidden></p>
+    <button id="split-save" class="btn-primary">Split</button>
   </div>
 
   <!-- Review queue -->

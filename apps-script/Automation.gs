@@ -698,7 +698,8 @@ function findReimports(txns, minAgeDays) {
 
 /** Charges with different IDs that look like the same purchase twice (last 30 days). */
 function findNearDuplicates(txns, today, minAmount) {
-  const recent = txns.filter((t) => t.amount < 0 && Math.abs(t.amount) >= minAmount && t.id && daysBetween(t.date, today) <= 30);
+  // Split rows (split:<ID>[n]) are parts of one purchase, never a double charge.
+  const recent = txns.filter((t) => t.amount < 0 && Math.abs(t.amount) >= minAmount && t.id && t.id.indexOf('split:') !== 0 && daysBetween(t.date, today) <= 30);
   const groups = new Map();
   recent.forEach((t) => {
     const k = t.account + '|' + t.amount.toFixed(2) + '|' + merchantKey(t.desc);

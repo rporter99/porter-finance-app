@@ -31,7 +31,8 @@
     goalEditing: null,
     show: '',            // Transactions view: '' all, 'uncat', 'asked'
     picking: false,
-    pendingAsk: false,   // Ask toggle in the open transaction panel, not saved until ✓
+    pendingAsk: false,
+    splitting: null,     // transaction open in the split form   // Ask toggle in the open transaction panel, not saved until ✓
     budgetMonth: '',     // 'YYYY-MM' picked on the Budget screen; '' means this month
     connBank: null,      // bank open on the Connections screen, if any
     deleting: false,
@@ -719,6 +720,73 @@
       return i + 2;
     },
 
+    // Splits one transaction into two rows the way Tiller does: the original row keeps the first
+    // part and becomes "split:<ID>[1]"; a copy right below gets the second part as "split:<ID>[2]".
+    // (Splitting a split row again adds the next number.) Everything else — date, account,
+    // descriptions, Date Added — is copied, so Tiller and the duplicate checks treat it like
+    // Tiller's own splits. The insert and both rows are written in one all-or-nothing request.
+    async splitTransaction(t, parts) {
+      const c = this.txCols;
+      if (!c['Transaction ID'] || !c.Amount || !c.Category) throw new Error("Your Transactions tab is missing a column needed to split.");
+      const row = await this.locate(t);
+      const width = this.txHeaders.length;
+      const idIdx = this.txHeaders.indexOf('Transaction ID');
+      const amtIdx = this.txHeaders.indexOf('Amount');
+      const catIdx = this.txHeaders.indexOf('Category');
+      const [[orig = []]] = await batchGet([`Transactions!A${row}:${colLetter(width - 1)}${row}`], 'FORMULA');
+      if (String(orig[idIdx] ?? '') !== t.id) throw new Error('The sheet changed while splitting. Nothing was changed. Refresh and try again.');
+      if (Math.round(Number(orig[amtIdx]) * 100) !== Math.round((parts[0].amount + parts[1].amount) * 100)) {
+        throw new Error("The parts don't add up to the transaction amount. Nothing was changed.");
+      }
+
+      // New split IDs.
+      const m = /^split:(.+)\[(\d+)\]$/.exec(t.id);
+      let id1 = t.id, id2;
+      if (m) {
+        const [ids] = await batchGet([`Transactions!${c['Transaction ID']}2:${c['Transaction ID']}`]);
+        const used = ids.map((r) => /^split:(.+)\[(\d+)\]$/.exec(String(r[0] ?? ''))).filter((x) => x && x[1] === m[1]).map((x) => Number(x[2]));
+        id2 = `split:${m[1]}[${Math.max(...used, 1) + 1}]`;
+      } else {
+        id1 = `split:${t.id}[1]`;
+        id2 = `split:${t.id}[2]`;
+      }
+
+      const cell = (v) => {
+        if (v === '' || v === null || v === undefined) return {};
+        if (typeof v === 'number') return { userEnteredValue: { numberValue: v } };
+        if (typeof v === 'boolean') return { userEnteredValue: { boolValue: v } };
+        if (String(v).startsWith('=')) return { userEnteredValue: { formulaValue: String(v) } };
+        return { userEnteredValue: { stringValue: String(v) } };
+      };
+      const copy = Array.from({ length: width }, (_, i) => orig[i] ?? '');
+      const fresh = copy.slice();
+      fresh[idIdx] = id2;
+      fresh[amtIdx] = parts[1].amount;
+      fresh[catIdx] = parts[1].category;
+      for (const name of ['Note', 'Reviewed', 'Ask']) { const i = this.txHeaders.indexOf(name); if (i >= 0) fresh[i] = ''; }
+      const first = copy.slice();
+      first[idIdx] = id1;
+      first[amtIdx] = parts[0].amount;
+      first[catIdx] = parts[0].category;
+
+      const sheetId = this.sheetIds.Transactions;
+      const rowData = (vals) => ({ values: vals.map(cell) });
+      await api(':batchUpdate', { method: 'POST', body: JSON.stringify({ requests: [
+        { insertDimension: { range: { sheetId, dimension: 'ROWS', startIndex: row, endIndex: row + 1 }, inheritFromBefore: true } },
+        { updateCells: { range: { sheetId, startRowIndex: row, endRowIndex: row + 1, startColumnIndex: 0, endColumnIndex: width },
+          rows: [rowData(fresh)], fields: 'userEnteredValue' } },
+        { updateCells: { range: { sheetId, startRowIndex: row - 1, endRowIndex: row, startColumnIndex: 0, endColumnIndex: width },
+          rows: [rowData(first)], fields: 'userEnteredValue' } },
+      ] }) });
+
+      // Confirm both rows landed where expected.
+      const [check] = await batchGet([`Transactions!${c['Transaction ID']}${row}:${c['Transaction ID']}${row + 1}`]);
+      if (String(check[0]?.[0] ?? '') !== id1 || String(check[1]?.[0] ?? '') !== id2) {
+        throw new Error('The split was written, but the sheet changed at the same moment. Check this transaction on the Transactions tab.');
+      }
+      t.id = id1;
+    },
+
     // Writes cells for one transaction, by column heading, e.g. { Category: 'Groceries', Note: '…' }.
     async setFields(t, fields) {
       if (!Object.keys(fields).length) return;
@@ -741,7 +809,7 @@
 
   // Writes are counted so a load that overlaps one (and may have read the sheet before the write
   // landed) is thrown away and done again once the writes finish.
-  const WRITES = ['setFields', 'setFieldBatch', 'fixCategories', 'saveGoal', 'deleteDuplicates', 'approveRule', 'dismissRule'];
+  const WRITES = ['splitTransaction', 'setFields', 'setFieldBatch', 'fixCategories', 'saveGoal', 'deleteDuplicates', 'approveRule', 'dismissRule'];
   let writing = 0, writeSeq = 0, reloadQueued = false;
   function trackWrites(src) {
     return new Proxy(src, {
@@ -1274,6 +1342,7 @@
     state.month = '';
     state.search = '';
     $('tx-search').value = '';
+    $('search-clear').hidden = true;
     state.limit = PAGE_SIZE;
     state.tab = 'tx';
     fillFilters();
@@ -1302,13 +1371,12 @@
   // Banner summary for the month picked in the filter, or this month when none is picked.
   function renderTxHero() {
     const month = state.month || thisMonth();
-    const inMonth = state.data.txns.filter((t) => t.date.startsWith(month));
-    const uncat = inMonth.filter((t) => !t.category).length;
+    const uncat = state.data.txns.filter((t) => t.date.startsWith(month) && !t.category).length;
     const queue = reviewQueue().length;
     const monthName = monthLabel(month);
     $('tx-hero').innerHTML = `<div class="hero photo photo-transactions"><div class="label">${monthName}</div>
-      <div class="big">${inMonth.length} <span class="small" style="font-weight:400">transactions</span></div>
-      <div class="small ${uncat ? 'warn' : ''}">${uncat ? `${uncat} need${uncat === 1 ? 's' : ''} a category` : 'All categorized'}</div>
+      ${uncat ? `<div class="big">${uncat}</div>` : ''}
+      <div class="small ${uncat ? 'warn' : ''}">${uncat ? `need${uncat === 1 ? 's' : ''} categorizing` : 'All categorized'}</div>
       ${queue ? `<button class="hero-btn" id="review-open">Review ${queue}</button>` : ''}</div>`;
   }
 
@@ -1958,13 +2026,87 @@
   // Ask flag in the transaction panel. Like the note, it is only saved with the ✓ button
   // (or by choosing a category); Cancel throws both away.
   function renderExtras(t) {
-    const show = !state.picking && state.data.hasAsk;
+    const canSplit = !!(t.id && t.amount && source.splitTransaction);
+    const show = !state.picking && (state.data.hasAsk || canSplit);
     $('tx-extras').hidden = !show;
     if (show) {
+      $('ask-row').hidden = !state.data.hasAsk;
       $('ask-toggle').textContent = state.pendingAsk ? 'Asked ✓' : 'Ask';
       $('ask-toggle').classList.toggle('on', state.pendingAsk);
+      $('split-row').hidden = !canSplit;
     }
     updateSheetSave();
+  }
+
+  // ---------- Split a transaction into two categories (the same way Tiller does) ----------
+
+  function catOptionsHtml(selected) {
+    const typeRank = (c) => (/expense/i.test(c.type) ? 0 : /income/i.test(c.type) ? 1 : 2);
+    const cats = state.data.categories.filter((c) => !c.hidden || c.name === selected)
+      .sort((a, b) => typeRank(a) - typeRank(b) || a.group.localeCompare(b.group) || a.name.localeCompare(b.name));
+    let html = `<option value=""${selected ? '' : ' selected'}>Choose a category</option>`, group = null;
+    for (const c of cats) {
+      if (c.group !== group) { if (group !== null) html += '</optgroup>'; group = c.group; html += `<optgroup label="${esc(group.trim())}">`; }
+      html += `<option value="${esc(c.name)}"${c.name === selected ? ' selected' : ''}>${esc(c.name.trim())}</option>`;
+    }
+    return html + (group !== null ? '</optgroup>' : '');
+  }
+
+  function openSplit(t) {
+    closeSheet();
+    state.splitting = t;
+    $('split-title').textContent = t.desc;
+    $('split-total').textContent = `${fmt(t.amount)} · ${dayLabel(t.date)} · ${t.account.trim()}`;
+    $('split-amt1').value = '';
+    $('split-cat1').innerHTML = catOptionsHtml(t.category);
+    $('split-cat2').innerHTML = catOptionsHtml('');
+    $('split-error').hidden = true;
+    $('split-save').disabled = false;
+    updateSplit();
+    $('split-backdrop').hidden = false;
+    $('split-sheet').hidden = false;
+    $('split-amt1').focus();
+  }
+
+  function closeSplit() {
+    state.splitting = null;
+    $('split-backdrop').hidden = true;
+    $('split-sheet').hidden = true;
+  }
+
+  // The second part is whatever is left of the total.
+  function splitParts() {
+    const t = state.splitting;
+    const total = Math.round(Math.abs(t.amount) * 100);
+    const a = Math.round(Number(String($('split-amt1').value).replace(/[$,\s]/g, '')) * 100);
+    return { total, a, b: total - a, ok: a > 0 && a < total };
+  }
+
+  function updateSplit() {
+    const { b, ok } = splitParts();
+    $('split-amt2').textContent = ok ? fmt(b / 100) : '—';
+  }
+
+  async function submitSplit() {
+    const t = state.splitting;
+    if (!t) return;
+    const { a, b, ok } = splitParts();
+    const c1 = $('split-cat1').value, c2 = $('split-cat2').value;
+    const err = !ok ? `Enter an amount between $0.01 and ${fmt(Math.abs(t.amount) - 0.01)} for the first part.`
+      : !c1 || !c2 ? 'Choose a category for both parts.' : '';
+    if (err) { $('split-error').textContent = err; $('split-error').hidden = false; return; }
+    const sign = t.amount < 0 ? -1 : 1;
+    $('split-save').disabled = true;
+    closeSplit();
+    toast('Splitting…', 0);
+    try {
+      await source.splitTransaction(t, [{ amount: sign * a / 100, category: c1 }, { amount: sign * b / 100, category: c2 }]);
+      toast(`Split into ${c1.trim()} and ${c2.trim()}`, 3000);
+    } catch (e) {
+      if (e instanceof AuthError) showBanner('Your sign-in expired, so nothing was split.', 'Sign in', () => startSignIn(false));
+      else toast(e.message || "Couldn't split the transaction.", 5000);
+    }
+    await loadData({ quiet: true });
   }
 
   // What the panel would change on the sheet: { Note, Ask } entries that differ from now.
@@ -2141,8 +2283,19 @@
 
     let searchTimer;
     $('tx-search').oninput = (e) => {
+      $('search-clear').hidden = !e.target.value;
       clearTimeout(searchTimer);
       searchTimer = setTimeout(() => { state.search = e.target.value; state.limit = PAGE_SIZE; renderTx(); }, 150);
+    };
+    // × in the search box: empty it and show every transaction again.
+    $('search-clear').onclick = () => {
+      clearTimeout(searchTimer);
+      $('tx-search').value = '';
+      $('search-clear').hidden = true;
+      $('tx-search').blur();
+      state.search = '';
+      state.limit = PAGE_SIZE;
+      renderTx();
     };
     $('tx-account').onchange = (e) => { state.account = e.target.value; state.limit = PAGE_SIZE; renderTx(); };
     $('tx-month').onchange = (e) => {
@@ -2155,6 +2308,7 @@
       const t = state.editing;
       if (!t) return;
       if (e.target.closest('#ask-toggle')) toggleAsk();
+      if (e.target.closest('#split-open')) openSplit(t);
     };
     $('tx-active').onclick = (e) => {
       const c = e.target.closest('[data-clear]');
@@ -2251,6 +2405,10 @@
 
     $('goal-cancel').onclick = closeGoalForm;
     $('goal-backdrop').onclick = closeGoalForm;
+    $('split-backdrop').onclick = closeSplit;
+    $('split-cancel').onclick = closeSplit;
+    $('split-save').onclick = submitSplit;
+    $('split-amt1').oninput = updateSplit;
     $('goal-save').onclick = () => submitGoal(false);
     $('goal-delete').onclick = () => submitGoal(true);
 
@@ -2279,7 +2437,7 @@
   // ---------- Start ----------
 
   // Something open or saving that a reload or sign-in redirect would throw away.
-  const busy = () => writing > 0 || !$('sheet').hidden || !$('review').hidden || !$('goal-sheet').hidden;
+  const busy = () => writing > 0 || !$('sheet').hidden || !$('review').hidden || !$('goal-sheet').hidden || !$('split-sheet').hidden;
 
   function start() {
     bind();
