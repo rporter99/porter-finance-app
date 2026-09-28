@@ -599,9 +599,10 @@
       try { saved = JSON.parse(store.get(CUTOFF_KEY) || 'null'); } catch (_) { /* ignore */ }
       if (saved && saved.sheet === sheetId() && Date.now() - saved.at < 7 * 86400000) {
         const from = Math.max(2, saved.row - 500), to = saved.row + 2500;
-        const [rows] = await batchGet([`Transactions!${col}${from}:${col}${to}`]);
-        const w = scan(rows, from);
-        const topKey = rows.length ? toDateKey(rows[0][0]) : '';
+        let rows = null;
+        try { [rows] = await batchGet([`Transactions!${col}${from}:${col}${to}`]); } catch (e) { if (e instanceof AuthError) throw e; }
+        const w = rows ? scan(rows, from) : { last: null, olderAfter: 0 };
+        const topKey = rows && rows.length ? toDateKey(rows[0][0]) : '';
         if (w.last && w.olderAfter >= 200 && (from === 2 || topKey >= cutoff)) {
           store.set(CUTOFF_KEY, JSON.stringify({ ...saved, row: w.last }));
           return { lastRow: w.last, hasOlder: true };
@@ -733,7 +734,7 @@
       const idIdx = this.txHeaders.indexOf('Transaction ID');
       const amtIdx = this.txHeaders.indexOf('Amount');
       const catIdx = this.txHeaders.indexOf('Category');
-      const [[orig = []]] = await batchGet([`Transactions!A${row}:${colLetter(width - 1)}${row}`], 'FORMULA');
+      const [[orig = []]] = await batchGet([`Transactions!A${row}:${colLetter(width - 1)}${row}`]);
       if (String(orig[idIdx] ?? '') !== t.id) throw new Error('The sheet changed while splitting. Nothing was changed. Refresh and try again.');
       if (Math.round(Number(orig[amtIdx]) * 100) !== Math.round((parts[0].amount + parts[1].amount) * 100)) {
         throw new Error("The parts don't add up to the transaction amount. Nothing was changed.");
@@ -751,33 +752,22 @@
         id2 = `split:${t.id}[2]`;
       }
 
-      const cell = (v) => {
-        if (v === '' || v === null || v === undefined) return {};
-        if (typeof v === 'number') return { userEnteredValue: { numberValue: v } };
-        if (typeof v === 'boolean') return { userEnteredValue: { boolValue: v } };
-        if (String(v).startsWith('=')) return { userEnteredValue: { formulaValue: String(v) } };
-        return { userEnteredValue: { stringValue: String(v) } };
-      };
-      const copy = Array.from({ length: width }, (_, i) => orig[i] ?? '');
-      const fresh = copy.slice();
-      fresh[idIdx] = id2;
-      fresh[amtIdx] = parts[1].amount;
-      fresh[catIdx] = parts[1].category;
-      for (const name of ['Note', 'Reviewed', 'Ask']) { const i = this.txHeaders.indexOf(name); if (i >= 0) fresh[i] = ''; }
-      const first = copy.slice();
-      first[idIdx] = id1;
-      first[amtIdx] = parts[0].amount;
-      first[catIdx] = parts[0].category;
-
+      // One all-or-nothing request: insert a row below, copy the original into it (formulas and
+      // formatting adjust like a normal copy), then set just the cells that differ.
       const sheetId = this.sheetIds.Transactions;
-      const rowData = (vals) => ({ values: vals.map(cell) });
-      await api(':batchUpdate', { method: 'POST', body: JSON.stringify({ requests: [
+      const one = (r, col, value) => ({ updateCells: {
+        range: { sheetId, startRowIndex: r, endRowIndex: r + 1, startColumnIndex: col, endColumnIndex: col + 1 },
+        rows: [{ values: [value === '' ? {} : { userEnteredValue: typeof value === 'number' ? { numberValue: value } : { stringValue: String(value) } }] }],
+        fields: 'userEnteredValue' } });
+      const requests = [
         { insertDimension: { range: { sheetId, dimension: 'ROWS', startIndex: row, endIndex: row + 1 }, inheritFromBefore: true } },
-        { updateCells: { range: { sheetId, startRowIndex: row, endRowIndex: row + 1, startColumnIndex: 0, endColumnIndex: width },
-          rows: [rowData(fresh)], fields: 'userEnteredValue' } },
-        { updateCells: { range: { sheetId, startRowIndex: row - 1, endRowIndex: row, startColumnIndex: 0, endColumnIndex: width },
-          rows: [rowData(first)], fields: 'userEnteredValue' } },
-      ] }) });
+        { copyPaste: { source: { sheetId, startRowIndex: row - 1, endRowIndex: row, startColumnIndex: 0, endColumnIndex: width },
+          destination: { sheetId, startRowIndex: row, endRowIndex: row + 1, startColumnIndex: 0, endColumnIndex: width }, pasteType: 'PASTE_NORMAL' } },
+        one(row, idIdx, id2), one(row, amtIdx, parts[1].amount), one(row, catIdx, parts[1].category),
+        one(row - 1, idIdx, id1), one(row - 1, amtIdx, parts[0].amount), one(row - 1, catIdx, parts[0].category),
+      ];
+      for (const name of ['Note', 'Reviewed', 'Ask']) { const k = this.txHeaders.indexOf(name); if (k >= 0) requests.push(one(row, k, '')); }
+      await api(':batchUpdate', { method: 'POST', body: JSON.stringify({ requests }) });
 
       // Confirm both rows landed where expected.
       const [check] = await batchGet([`Transactions!${c['Transaction ID']}${row}:${c['Transaction ID']}${row + 1}`]);
@@ -821,6 +811,7 @@
           writing++; writeSeq++;
           try { return await v.apply(obj, args); } finally {
             writing--; writeSeq++;
+            if (state.data) updateConnectionsBadge();
             if (!writing && reloadQueued && !state.loading) { reloadQueued = false; loadData({ quiet: true }); }
           }
         };
@@ -1371,13 +1362,13 @@
   // Banner summary for the month picked in the filter, or this month when none is picked.
   function renderTxHero() {
     const month = state.month || thisMonth();
-    const uncat = state.data.txns.filter((t) => t.date.startsWith(month) && !t.category).length;
+    const uncat = state.data.txns.filter((t) => t.date.startsWith(month) && !t.category && !t.reviewed).length;
     const queue = reviewQueue().length;
     const monthName = monthLabel(month);
     $('tx-hero').innerHTML = `<div class="hero photo photo-transactions"><div class="label">${monthName}</div>
-      ${uncat ? `<div class="big">${uncat}</div>` : ''}
-      <div class="small ${uncat ? 'warn' : ''}">${uncat ? `need${uncat === 1 ? 's' : ''} categorizing` : 'All categorized'}</div>
-      ${queue ? `<button class="hero-btn" id="review-open">Review ${queue}</button>` : ''}</div>`;
+      ${uncat ? `<button class="hero-count" id="uncat-show" aria-label="Show transactions that need a category"><span class="big">${uncat}</span>
+      <span class="small warn">need${uncat === 1 ? 's' : ''} categorizing ›</span></button>` : '<div class="small">All categorized</div>'}
+      ${queue ? `<button class="hero-btn" id="review-open">${queue === uncat ? 'Review' : 'Review all'} (${queue})</button>` : ''}</div>`;
   }
 
   function renderTx() {
@@ -1430,6 +1421,7 @@
   // The Connections checks scan every transaction, so each result is kept until the data
   // changes: a new load (new state.data) or any save (writeSeq moves on every write).
   const memo = { data: null, seq: -1, v: {} };
+  const dataChanged = () => { memo.data = null; };
   function cached(name, fn) {
     if (memo.data !== state.data || memo.seq !== writeSeq) { memo.data = state.data; memo.seq = writeSeq; memo.v = {}; }
     return name in memo.v ? memo.v[name] : (memo.v[name] = fn());
@@ -1773,7 +1765,8 @@
   function bindPullToRefresh() {
     const ptr = $('ptr');
     let y0 = null, dy = 0;
-    const blocked = () => $('app').hidden || !$('sheet').hidden || !$('review').hidden || !$('lock').hidden;
+    const blocked = () => $('app').hidden || !$('sheet').hidden || !$('review').hidden || !$('lock').hidden ||
+      !$('split-sheet').hidden || !$('goal-sheet').hidden;
     document.addEventListener('touchstart', (e) => {
       if (window.scrollY > 0 || blocked() || state.loading) { y0 = null; return; }
       y0 = e.touches[0].clientY; dy = 0;
@@ -2053,7 +2046,9 @@
   }
 
   function openSplit(t) {
+    const pending = panelChanges(t);   // a typed note or Ask is saved first, not lost
     closeSheet();
+    if (Object.keys(pending).length) savePanel(t, pending);
     state.splitting = t;
     $('split-title').textContent = t.desc;
     $('split-total').textContent = `${fmt(t.amount)} · ${dayLabel(t.date)} · ${t.account.trim()}`;
@@ -2062,6 +2057,7 @@
     $('split-cat2').innerHTML = catOptionsHtml('');
     $('split-error').hidden = true;
     $('split-save').disabled = false;
+    $('split-save').textContent = 'Split';
     updateSplit();
     $('split-backdrop').hidden = false;
     $('split-sheet').hidden = false;
@@ -2097,16 +2093,28 @@
     if (err) { $('split-error').textContent = err; $('split-error').hidden = false; return; }
     const sign = t.amount < 0 ? -1 : 1;
     $('split-save').disabled = true;
-    closeSplit();
-    toast('Splitting…', 0);
+    $('split-save').textContent = 'Splitting…';
+    $('split-error').hidden = true;
     try {
       await source.splitTransaction(t, [{ amount: sign * a / 100, category: c1 }, { amount: sign * b / 100, category: c2 }]);
+      closeSplit();
       toast(`Split into ${c1.trim()} and ${c2.trim()}`, 3000);
+      await loadData({ quiet: true });
     } catch (e) {
-      if (e instanceof AuthError) showBanner('Your sign-in expired, so nothing was split.', 'Sign in', () => startSignIn(false));
-      else toast(e.message || "Couldn't split the transaction.", 5000);
+      // Keep the form open with what was entered, and say why.
+      $('split-save').disabled = false;
+      $('split-save').textContent = 'Split';
+      $('split-error').textContent = e instanceof AuthError ? 'Your sign-in expired, so nothing was split. Close this and sign in again.'
+        : (e.message || "Couldn't split the transaction.");
+      $('split-error').hidden = false;
     }
-    await loadData({ quiet: true });
+  }
+
+  function splitHalf() {
+    const t = state.splitting;
+    if (!t) return;
+    $('split-amt1').value = (Math.floor(Math.round(Math.abs(t.amount) * 100) / 2) / 100).toFixed(2);
+    updateSplit();
   }
 
   // What the panel would change on the sheet: { Note, Ask } entries that differ from now.
@@ -2114,7 +2122,7 @@
     const fields = {};
     if (state.picking || !t) return fields;
     const note = $('tx-note').value.trim();
-    if (state.data.hasNote && note !== (t.note || '')) fields.Note = note;
+    if (state.data.hasNote && note !== (t.note || '').trim()) fields.Note = note;
     if (state.data.hasAsk && state.pendingAsk !== !!t.ask) fields.Ask = state.pendingAsk ? 'Yes' : '';
     return fields;
   }
@@ -2136,6 +2144,7 @@
     if ('Note' in fields) t.note = fields.Note;
     if ('Ask' in fields) t.ask = !!fields.Ask;
     if ('Category' in fields) t.category = fields.Category;
+    dataChanged();
     render();
     toast('Saving…', 0);
     try {
@@ -2380,7 +2389,17 @@
       if (bank) { state.connBank = bank.dataset.bank; renderConnections(); window.scrollTo(0, 0); }
     };
 
-    $('tx-hero').onclick = (e) => { if (e.target.closest('#review-open')) openReview(); };
+    $('tx-hero').onclick = (e) => {
+      if (e.target.closest('#review-open')) { openReview(); return; }
+      // Tapping the count lists just those transactions for that month.
+      if (e.target.closest('#uncat-show')) {
+        state.show = 'uncat';
+        if (!state.month) state.month = thisMonth();
+        state.limit = PAGE_SIZE;
+        fillFilters();
+        renderTx();
+      }
+    };
     $('review').onclick = (e) => {
       if (e.target.closest('#rv-done') || e.target.closest('#rv-finish')) { closeReview(); return; }
       if (e.target.closest('#rv-skip')) { if (!state.review.saving) reviewNext(); return; }
@@ -2409,6 +2428,7 @@
     $('split-cancel').onclick = closeSplit;
     $('split-save').onclick = submitSplit;
     $('split-amt1').oninput = updateSplit;
+    $('split-half').onclick = splitHalf;
     $('goal-save').onclick = () => submitGoal(false);
     $('goal-delete').onclick = () => submitGoal(true);
 

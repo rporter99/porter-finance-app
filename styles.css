@@ -7,6 +7,7 @@
   --line: rgba(60, 40, 20, 0.09);
   --accent: #534ab7;
   --accent-soft: #eeedfe;
+  --on-accent: #fff;
   --good: #3b6d11;
   --bad: #9b4150;
   --bad-soft: #f6eaec;
@@ -29,6 +30,7 @@
     --faint: #786f80;
     --line: rgba(255, 255, 255, 0.1);
     --accent: #afa9ec;
+    --on-accent: #1c1830;
     --accent-soft: #26215c;
     --good: #97c459;
     --bad: #c7707d;
@@ -70,7 +72,7 @@ h1 { font-size: 28px; font-weight: 700; margin: 0; letter-spacing: -0.02em; }
 .signin-box h1 { margin: 16px 0 8px; font-size: 24px; }
 .btn-primary {
   margin-top: 16px; width: 100%; padding: 14px 18px; border: 0; border-radius: 12px;
-  background: var(--accent); color: #fff; font-weight: 600;
+  background: var(--accent); color: var(--on-accent); font-weight: 600;
 }
 
 /* Layout */
@@ -273,7 +275,7 @@ button.row { width: 100%; background: none; border-left: 0; border-right: 0; bor
 .rv-card #rv-note { background: var(--bg); }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { border: 0; border-radius: 16px; padding: 7px 14px; background: var(--tag-bg); color: var(--tag-text); font-size: 15px; }
-.chip.on { background: var(--accent); color: #fff; }
+.chip.on { background: var(--accent); color: var(--on-accent); }
 .chip.more { background: none; color: var(--accent); }
 .rv-btns { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; margin-top: 16px; }
 .rv-btns .btn-primary { margin: 0; }
@@ -300,7 +302,7 @@ body.privacy #app, body.privacy #review, body.privacy .sheet { filter: blur(24px
 .search-row input { flex: 1; }
 .filter-btn { position: relative; flex-shrink: 0; width: 44px; border: 0; border-radius: 10px; background: var(--card); color: var(--muted); display: flex; align-items: center; justify-content: center; }
 .filter-btn.on { color: var(--accent); }
-.filter-count { position: absolute; top: 4px; right: 4px; min-width: 16px; height: 16px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
+.filter-count { position: absolute; top: 4px; right: 4px; min-width: 16px; height: 16px; border-radius: 8px; background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
 .active-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .fchip { border: 0; border-radius: 14px; background: var(--tag-bg); color: var(--tag-text); font-size: 13px; font-weight: 500; padding: 5px 10px; }
 .tx-total { display: flex; justify-content: space-between; gap: 12px; margin: 10px 4px 0; font-size: 14px; color: var(--muted); }
@@ -414,3 +416,17 @@ button.acct-row { font: inherit; color: inherit; }
 /* Split */
 .split-part { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; }
 .split-rest { min-height: 44px; display: flex; align-items: center; padding: 0 12px; border-radius: 10px; background: var(--track); font-weight: 600; }
+
+/* Bigger touch areas for small buttons, without changing how they look */
+.text-btn, .btn-mini, .fchip, .seg button, .alert-x, .small-chip { position: relative; }
+.text-btn::after, .btn-mini::after, .fchip::after, .seg button::after, .alert-x::after, .small-chip::after {
+  content: ''; position: absolute; inset: -8px -4px; }
+.search-clear::after { content: ''; position: absolute; inset: -7px; }
+
+/* Transactions header count (tappable) */
+.hero-count { display: block; background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; }
+.hero-count .big, .hero-count .small { display: block; }
+
+/* Split: amount with a Half button */
+.split-amt { display: flex; gap: 6px; align-items: center; }
+.split-amt input { flex: 1; min-width: 0; }

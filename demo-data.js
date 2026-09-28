@@ -98,7 +98,8 @@
       await new Promise((r) => setTimeout(r, 400));
       const i = txns.indexOf(t);
       const base = t.id.replace(/^split:(.+)\[\d+\]$/, '$1');
-      const copy = { ...t, id: `split:${base}[2]`, amount: parts[1].amount, category: parts[1].category, note: '', ask: false };
+      const n = Math.max(1, ...txns.map((x) => (/^split:(.+)\[(\d+)\]$/.exec(x.id) || [])).filter((m) => m[1] === base).map((m) => Number(m[2]))) + 1;
+      const copy = { ...t, id: `split:${base}[${n}]`, amount: parts[1].amount, category: parts[1].category, note: '', ask: false };
       Object.assign(t, { id: t.id.startsWith('split:') ? t.id : `split:${base}[1]`, amount: parts[0].amount, category: parts[0].category });
       txns.splice(i + 1, 0, copy);
     },
