@@ -52,6 +52,7 @@ const SETTINGS = [
   ['Backups to keep', 14, 'Daily backups saved in the "' + BACKUP_FOLDER + '" folder in Google Drive.'],
   ['Quiet hours', '22 to 7', 'Alerts between these hours (24-hour clock) arrive without a sound.'],
   ['Also email alerts', 'No', 'Yes to get an email as well as the phone alert.'],
+  ['Quiet account alert (days)', 5, 'Alert when a card or account you normally use often has had no new transactions for this many days (the bank feed may be stuck). 0 turns it off.'],
   ['Ignore accounts for connection alerts', '', 'Accounts to leave out of "stopped updating" alerts: last 4 digits (like 1234) or exact names, separated by commas.'],
 ];
 
@@ -141,6 +142,7 @@ function runHourly() {
     safely_('Double charges', () => checkNearDuplicates_(fresh));
     safely_('Connections', () => checkConnections_(fresh));
     safely_('Sheet filling', () => checkFill_(fresh));
+    safely_('Quiet accounts', () => checkQuietAccounts_(fresh));
     safely_('New charges', () => checkNewCharges_(fresh));
     safely_('Low balances', () => checkLowBalances_(fresh));
   } finally {
@@ -253,6 +255,19 @@ function checkConnections_(ctx) {
   connectionProblems(ctx.accounts, ctx.today, ignoreList_(ctx.settings['Ignore accounts for connection alerts'])).forEach((b) => {
     notify_('conn:' + b.name, 'connection', `${b.name} stopped updating`,
       `Last update ${b.days} days ago. Open the Tiller Console to refresh or fix it.`, { repeatDays: 3 });
+  });
+}
+
+// An account can keep "updating" (fresh balance) while its bank feed stops sending new
+// transactions, so this looks at the transactions themselves. One alert per quiet spell.
+function checkQuietAccounts_(ctx) {
+  const days = num_(ctx.settings['Quiet account alert (days)'], 5);
+  if (!days) return;
+  const ignore = ignoreList_(ctx.settings['Ignore accounts for connection alerts']);
+  quietAccounts(ctx.accounts, ctx.txns, ctx.today, ignore, days).forEach((q) => {
+    notify_('quiet:' + (q.number || q.name) + ':' + q.last, 'connection', `No new ${q.name} transactions since ${day_(q.last)}`,
+      `${q.name}${q.institution ? ' (' + q.institution + ')' : ''} is normally used often, but nothing new has arrived for ${q.days} days. ` +
+      'If you have used it since, open the Tiller Console and refresh this bank. If it is still stuck after that, ask Tiller support to refresh the account.');
   });
 }
 
@@ -525,7 +540,7 @@ function loadContext_() {
     const raw = Number(a[R('Last Balance')]) || 0;
     accounts.push({
       id: String(a[R('Account Id')] || ''), name,
-      number: String(a[R('Account #')] || '').trim(), institution: String(a[R('Institution')] || '').trim(),
+      number: String(a[R('Account #')] || '').trim(), institution: String(a[R('Institution')] || '').trim(), type,
       hidden: /^(hide|true|yes|x)$/i.test(String(a[R('Hide')] || '').trim()),
       balance: liability ? -Math.abs(raw) : raw,
       updated: key(a[R('Last Update')]),
@@ -706,6 +721,29 @@ function isIgnored(a, ignore) {
   const digits = String(a.number || '').replace(/\D/g, '');
   const name = a.name.trim().toLowerCase();
   return (ignore || []).some((x) => (/^\d{3,}$/.test(x) ? digits.endsWith(x) : name === x));
+}
+
+/**
+ * Cards and bank accounts in regular use (10+ transactions in the 60 days before their newest one)
+ * whose newest transaction is `minDays` or more days old, while the account itself still updates
+ * (a stale account already gets the "stopped updating" alert). Investment accounts, whose activity
+ * is naturally irregular, and hidden, manual and ignored accounts are skipped.
+ * Transactions are matched to the account by account number, or by name when there is none.
+ */
+function quietAccounts(accounts, txns, today, ignore, minDays) {
+  const out = [];
+  accounts.forEach((a) => {
+    if (a.hidden || isManual(a) || isIgnored(a, ignore)) return;
+    if (a.type && !/credit|checking|savings/i.test(a.type)) return;
+    if (!a.updated || daysBetween(a.updated, today) >= 7) return;
+    const mine = txns.filter((t) => (a.number ? t.number === a.number : t.account.trim() === a.name.trim()) && t.date);
+    if (!mine.length) return;
+    const last = mine.reduce((m, t) => (t.date > m ? t.date : m), '');
+    const recent = mine.filter((t) => daysBetween(t.date, last) <= 60).length;
+    const days = daysBetween(last, today);
+    if (recent >= 10 && days >= minDays) out.push({ name: a.name.trim(), number: a.number, institution: a.institution, last, days });
+  });
+  return out;
 }
 
 /** Banks whose stalest account hasn't updated in 7+ days (only accounts shown on Balances). */
