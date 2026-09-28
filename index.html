@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://sheets.googleapis.com; frame-ancestors 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#f6f3ef" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#14111b" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Finances">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+  <title>Porter Finances</title>
+</head>
+<body>
+  <!-- Sign-in screen: the only thing anyone sees before signing in -->
+  <section id="signin" class="signin" hidden>
+    <div class="signin-box">
+      <img src="icons/icon-192.png" alt="" width="72" height="72">
+      <h1>Porter Finances</h1>
+      <p class="muted">Sign in with a Google account that has access to the sheet.</p>
+      <button id="signin-btn" class="btn-primary">Sign in with Google</button>
+      <p id="signin-error" class="error" hidden></p>
+    </div>
+  </section>
+
+  <!-- One-time sheet link (kept on this phone only) -->
+  <section id="sheet-setup" class="signin" hidden>
+    <div class="signin-box">
+      <img src="icons/icon-192.png" alt="" width="72" height="72">
+      <h1>Connect your sheet</h1>
+      <p class="muted">Paste the link to your Tiller Google Sheet. You only do this once on each phone.</p>
+      <input id="sheet-link" type="url" placeholder="https://docs.google.com/spreadsheets/d/…" autocomplete="off" autocorrect="off" spellcheck="false">
+      <button id="sheet-connect" class="btn-primary">Connect</button>
+      <p id="sheet-setup-error" class="error" hidden></p>
+    </div>
+  </section>
+
+  <!-- Main app -->
+  <div id="app" hidden>
+    <header class="topbar">
+      <h1 id="title">Accounts</h1>
+      <button id="refresh-btn" class="icon-btn" aria-label="Refresh">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </header>
+
+    <div id="ptr" class="ptr" aria-hidden="true"><span class="ptr-pull">Pull to refresh</span><span class="ptr-release">Release to refresh</span></div>
+    <div id="banner" class="banner" hidden></div>
+
+    <main>
+      <section id="view-home" class="view"></section>
+      <section id="view-budget" class="view" hidden></section>
+      <section id="view-tx" class="view" hidden>
+        <div id="tx-hero"></div>
+        <div class="tx-controls">
+          <div class="search-row">
+            <input id="tx-search" type="search" placeholder="Search" autocomplete="off" autocorrect="off" spellcheck="false">
+            <button id="filter-btn" class="filter-btn" aria-label="Filters">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <span id="filter-count" class="filter-count" hidden></span>
+            </button>
+          </div>
+          <div id="tx-filter-panel" class="tx-filters" hidden>
+            <select id="tx-month" aria-label="Month"><option value="">All months</option></select>
+            <select id="tx-sort" aria-label="Sort">
+              <option value="date">Newest first</option>
+              <option value="account">By account</option>
+            </select>
+            <select id="tx-account" class="full" aria-label="Account"><option value="">All accounts</option></select>
+            <select id="tx-show" aria-label="Show">
+              <option value="">All transactions</option>
+              <option value="uncat">Needs category</option>
+              <option value="asked">Asked</option>
+            </select>
+          </div>
+          <div id="tx-active" class="active-chips" hidden></div>
+        </div>
+        <div id="tx-list"></div>
+      </section>
+      <section id="view-connections" class="view" hidden></section>
+    </main>
+
+    <nav class="tabbar">
+      <button data-tab="home" class="active">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1z"/></svg>
+        <span>Accounts</span>
+      </button>
+      <button data-tab="budget">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9h-9z M14 3.2V10h6.8A9 9 0 0 0 14 3.2z"/></svg>
+        <span>Budget</span>
+      </button>
+      <button data-tab="tx">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>
+        <span>Transactions</span>
+      </button>
+      <button data-tab="connections">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg>
+        <span>Connections</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Recategorize sheet -->
+  <div id="sheet-backdrop" class="sheet-backdrop" hidden></div>
+  <div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <div>
+        <div id="sheet-title" class="sheet-title"></div>
+        <div id="sheet-sub" class="muted small"></div>
+      </div>
+      <div class="sheet-actions"><button id="sheet-close" class="text-btn">Cancel</button><button id="sheet-save" class="btn-mini" hidden>Save ✓</button></div>
+    </div>
+    <div id="tx-extras" class="tx-extras" hidden>
+      <div class="extras-row" id="ask-row"><span class="muted small">Ask about this</span><button id="ask-toggle" class="chip small-chip">Ask</button></div>
+    </div>
+    <textarea id="tx-note" rows="2" placeholder="Add a note" hidden></textarea>
+    <input id="cat-search" type="search" placeholder="Find a category" autocomplete="off">
+    <div id="cat-list" class="cat-list"></div>
+  </div>
+
+  <!-- Savings goal form -->
+  <div id="goal-backdrop" class="sheet-backdrop" hidden></div>
+  <div id="goal-sheet" class="sheet goal-sheet" role="dialog" aria-modal="true" aria-labelledby="goal-title" hidden>
+    <div class="sheet-handle"></div>
+    <div class="sheet-head"><div id="goal-title" class="sheet-title">New savings goal</div><button id="goal-cancel" class="text-btn">Cancel</button></div>
+    <label class="field"><span>Name</span><input id="goal-name" type="text" placeholder="Vacation" autocomplete="off"></label>
+    <label class="field"><span>Target amount</span><input id="goal-target" type="text" inputmode="decimal" placeholder="5000"></label>
+    <label class="field"><span>Target date</span><input id="goal-date" type="month"></label>
+    <label class="field"><span>Account</span><select id="goal-account"></select></label>
+    <p id="goal-error" class="error" hidden></p>
+    <button id="goal-save" class="btn-primary">Save goal</button>
+    <button id="goal-delete" class="text-btn danger-text" hidden>Delete goal</button>
+  </div>
+
+  <!-- Review queue -->
+  <div id="review" class="review" role="dialog" aria-label="Review transactions" hidden></div>
+
+  <!-- Face ID lock -->
+  <div id="lock" class="lock-screen" hidden>
+    <img src="icons/icon-192.png" alt="" width="64" height="64">
+    <h1>Porter Finances</h1>
+    <button id="lock-btn" class="btn-primary">Unlock with Face ID</button>
+    <p id="lock-error" class="error" hidden></p>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="config.js"></script>
+  <script src="demo-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
