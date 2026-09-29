@@ -1106,11 +1106,10 @@
       html += `<div class="section-label">${esc(g)}</div><div class="card">`;
       for (const c of groups.get(g).sort((a, b) => a.name.localeCompare(b.name))) {
         const status = budgetStatus(c.spent, c.budget);
-        const over = status === 'over';
         const w = c.budget ? Math.min(100, Math.max(0, (c.spent / c.budget) * 100)) : (c.spent > 0 ? 100 : 0);
         html += `<button class="budget-item" data-cat="${esc(c.name)}"><div class="budget-top"><span>${esc(c.name)}</span>
-          <span class="${over ? 'neg' : ''}">${fmt0(c.spent)} <span class="of">/ ${fmt0(c.budget)}</span> <span class="chev">›</span></span></div>
-          <div class="bar ${over ? 'over' : status}"><i style="width:${w}%"></i></div></button>`;
+          <span>${fmt0(c.spent)} <span class="of">/ ${fmt0(c.budget)}</span> <span class="chev">›</span></span></div>
+          <div class="bar ${status}"><i style="width:${w}%"></i></div></button>`;
       }
       html += '</div>';
     }
