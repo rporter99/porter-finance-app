@@ -12,7 +12,9 @@
   --bad: #9b4150;
   --bad-soft: #f6eaec;
   --warn: #bf9535;
-  --bar-ok: var(--tag-text);
+  --bar-ok: #8cc49c;
+  --bar-warn: #e8c56d;
+  --bar-over: #e0969c;
   --warn-soft: #faeeda;
   --warn-text: #854f0b;
   --tag-bg: #eeedfe;
@@ -36,8 +38,9 @@
     --bad: #c7707d;
     --bad-soft: #3a1d22;
     --warn: #d6ad4f;
-    --bar-ok: var(--tag-text);
-    --bar-over: #9e4453;
+    --bar-ok: #79b28f;
+    --bar-warn: #cdb068;
+    --bar-over: #c98089;
     --warn-soft: #3d2a10;
     --warn-text: #fac775;
     --tag-bg: #2c2654;
@@ -120,8 +123,8 @@ main { padding: 0 16px calc(env(safe-area-inset-bottom) + 84px); }
 .budget-top { display: flex; justify-content: space-between; gap: 12px; }
 .bar { height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; margin-top: 8px; }
 .bar i { display: block; height: 100%; background: var(--bar-ok); border-radius: 4px; }
-.bar.warn i { background: var(--warn); }
-.bar.over i { background: var(--bar-over, var(--bad)); }
+.bar.warn i { background: var(--bar-warn); }
+.bar.over i { background: var(--bar-over); }
 .budget-top .of { color: var(--faint); }
 .progress-total { height: 10px; margin-top: 12px; }
 
