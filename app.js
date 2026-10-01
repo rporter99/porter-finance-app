@@ -32,7 +32,8 @@
     show: '',            // Transactions view: '' all, 'uncat', 'asked'
     picking: false,
     pendingAsk: false,
-    splitting: null,     // transaction open in the split form   // Ask toggle in the open transaction panel, not saved until ✓
+    splitting: null,
+    manualEditing: null, // manual account open in the value form     // transaction open in the split form   // Ask toggle in the open transaction panel, not saved until ✓
     budgetMonth: '',     // 'YYYY-MM' picked on the Budget screen; '' means this month
     connBank: null,      // bank open on the Connections screen, if any
     deleting: false,
@@ -721,6 +722,62 @@
       return i + 2;
     },
 
+    // Records a new value for a manual account the way Tiller's Manual Accounts tool does: a new
+    // row at the top of Balance History, copied from the account's latest row, with today's date
+    // and time, a fresh Balance ID and the new balance. The Accounts tab picks it up by formula.
+    async updateManualBalance(a, value) {
+      const BH = 'Balance History';
+      if (!(BH in this.sheetIds)) throw new Error("Couldn't find the Balance History tab.");
+      const [head] = await batchGet([`'${BH}'!1:1`], 'FORMATTED_VALUE');
+      const h = (head[0] || []).map((x) => String(x).trim());
+      const at = (n) => h.indexOf(n);
+      for (const n of ['Date', 'Account ID', 'Balance']) if (at(n) < 0) throw new Error(`Balance History has no "${n}" column.`);
+      const lastCol = colLetter(h.length - 1);
+      const [ids, dates] = await batchGet([`'${BH}'!${colLetter(at('Account ID'))}2:${colLetter(at('Account ID'))}`,
+        `'${BH}'!${colLetter(at('Date'))}2:${colLetter(at('Date'))}`]);
+      let prevRow = 0, prevDate = -Infinity;
+      ids.forEach((r, i) => {
+        if (String(r[0] ?? '') !== a.id) return;
+        const d = Number(dates[i]?.[0]);
+        if (d > prevDate) { prevDate = d; prevRow = i + 2; }
+      });
+      let prev = [];
+      if (prevRow) [[prev = []]] = await batchGet([`'${BH}'!A${prevRow}:${lastCol}${prevRow}`]);
+
+      const now = new Date();
+      const serial = (d) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000 + 25569;
+      const today = serial(now);
+      const sunday = new Date(now); sunday.setDate(now.getDate() - now.getDay());
+      const balanceId = (crypto.randomUUID && crypto.randomUUID()) || `app-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const vals = Array.from({ length: h.length }, (_, i) => prev[i] ?? '');
+      const set = (n, v) => { if (at(n) >= 0) vals[at(n)] = v; };
+      set('Date', today);
+      set('Time', (now.getHours() * 60 + now.getMinutes()) / 1440);
+      set('Account ID', a.id);
+      set('Balance ID', balanceId);
+      set('Balance', Math.abs(value));
+      set('Month', serial(new Date(now.getFullYear(), now.getMonth(), 1)));
+      set('Week', serial(sunday));
+      set('Date Added', today + (now.getHours() * 60 + now.getMinutes()) / 1440);
+      if (!prevRow) {
+        set('Account', a.name);
+        set('Institution', a.institution || '');
+        set('Class', a.liability ? 'Liability' : 'Asset');
+      }
+
+      const sheetId = this.sheetIds[BH];
+      const cell = (v) => (v === '' || v === null || v === undefined ? {}
+        : { userEnteredValue: typeof v === 'number' ? { numberValue: v } : { stringValue: String(v) } });
+      await api(':batchUpdate', { method: 'POST', body: JSON.stringify({ requests: [
+        // Inserted above the newest row; it takes that row's formats (dates, $, text).
+        { insertDimension: { range: { sheetId, dimension: 'ROWS', startIndex: 1, endIndex: 2 }, inheritFromBefore: false } },
+        { updateCells: { range: { sheetId, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: h.length },
+          rows: [{ values: vals.map(cell) }], fields: 'userEnteredValue' } },
+      ] }) });
+      const [check] = await batchGet([`'${BH}'!${colLetter(at('Account ID'))}2`]);
+      if (String(check[0]?.[0] ?? '') !== a.id) throw new Error('The value was saved, but the sheet changed at the same moment. Check the Balance History tab.');
+    },
+
     // Splits one transaction into two rows the way Tiller does: the original row keeps the first
     // part and becomes "split:<ID>[1]"; a copy right below gets the second part as "split:<ID>[2]".
     // (Splitting a split row again adds the next number.) Everything else — date, account,
@@ -799,7 +856,7 @@
 
   // Writes are counted so a load that overlaps one (and may have read the sheet before the write
   // landed) is thrown away and done again once the writes finish.
-  const WRITES = ['splitTransaction', 'setFields', 'setFieldBatch', 'fixCategories', 'saveGoal', 'deleteDuplicates', 'approveRule', 'dismissRule'];
+  const WRITES = ['updateManualBalance', 'splitTransaction', 'setFields', 'setFieldBatch', 'fixCategories', 'saveGoal', 'deleteDuplicates', 'approveRule', 'dismissRule'];
   let writing = 0, writeSeq = 0, reloadQueued = false;
   function trackWrites(src) {
     return new Proxy(src, {
@@ -1578,9 +1635,14 @@
       if (state.showHealthy) html += section('', ok).replace('<div class="section-label"></div>', '');
     }
     if (manual.length) {
-      html += `<div class="section-label">Manual entries</div><div class="card"><div class="row"><div class="name">
-        <div class="wrap">${esc(manual.map((a) => a.name.trim()).join(', '))}</div>
-        <div class="muted small">You update these by hand in Tiller</div></div><span class="tag manual">Manual</span></div></div>`;
+      html += `<div class="section-label">Manual entries</div><div class="card">`;
+      for (const a of manual) {
+        const days = daysSince(a.updated);
+        html += `<button class="row" data-manual="${esc(a.id)}"><div class="name"><div>${esc(a.name.trim())}</div>
+          <div class="muted small">Updated ${days === null ? 'never' : agoDays(days)}</div></div>
+          <div class="amt">${fmt0(Math.abs(a.balance))}</div><span class="chev">›</span></button>`;
+      }
+      html += `</div><div class="footnote">Tap one to enter a new value.</div>`;
     }
     html += lockHtml();
     html += `<div class="footnote">OK: updated within ${CONN_OK_DAYS} days · Check: ${CONN_OK_DAYS + 1}–${CONN_FIX_DAYS - 1} days · Needs a fix: ${CONN_FIX_DAYS}+ days</div>`;
@@ -1765,7 +1827,7 @@
     const ptr = $('ptr');
     let y0 = null, dy = 0;
     const blocked = () => $('app').hidden || !$('sheet').hidden || !$('review').hidden || !$('lock').hidden ||
-      !$('split-sheet').hidden || !$('goal-sheet').hidden;
+      !$('split-sheet').hidden || !$('goal-sheet').hidden || !$('manual-sheet').hidden;
     document.addEventListener('touchstart', (e) => {
       if (window.scrollY > 0 || blocked() || state.loading) { y0 = null; return; }
       y0 = e.touches[0].clientY; dy = 0;
@@ -2061,6 +2123,58 @@
     $('split-backdrop').hidden = false;
     $('split-sheet').hidden = false;
     $('split-amt1').focus();
+  }
+
+  // ---------- Manual account values ----------
+
+  function openManual(id) {
+    const a = state.data.accounts.find((x) => x.id === id);
+    if (!a) return;
+    state.manualEditing = a;
+    const days = daysSince(a.updated);
+    $('manual-title').textContent = a.name.trim();
+    $('manual-sub').textContent = `Now ${fmt0(Math.abs(a.balance))} · updated ${days === null ? 'never' : agoDays(days)}`;
+    $('manual-value').value = '';
+    $('manual-value').placeholder = String(Math.round(Math.abs(a.balance)));
+    $('manual-error').hidden = true;
+    $('manual-save').disabled = false;
+    $('manual-save').textContent = 'Save value';
+    $('manual-backdrop').hidden = false;
+    $('manual-sheet').hidden = false;
+    $('manual-value').focus();
+  }
+
+  function closeManual() {
+    state.manualEditing = null;
+    $('manual-backdrop').hidden = true;
+    $('manual-sheet').hidden = true;
+  }
+
+  async function submitManual() {
+    const a = state.manualEditing;
+    if (!a) return;
+    const raw = String($('manual-value').value).replace(/[$,\s]/g, '');
+    const value = Number(raw);
+    if (!raw || !isFinite(value) || value < 0) {
+      $('manual-error').textContent = 'Enter the new value, like 850000.';
+      $('manual-error').hidden = false;
+      return;
+    }
+    $('manual-save').disabled = true;
+    $('manual-save').textContent = 'Saving…';
+    $('manual-error').hidden = true;
+    try {
+      await source.updateManualBalance(a, value);
+      closeManual();
+      toast(`${a.name.trim()} updated to ${fmt0(value)}`, 3000);
+      await loadData({ quiet: true });
+    } catch (e) {
+      $('manual-save').disabled = false;
+      $('manual-save').textContent = 'Save value';
+      $('manual-error').textContent = e instanceof AuthError ? 'Your sign-in expired, so nothing was saved. Close this and sign in again.'
+        : (e.message || "Couldn't save the value.");
+      $('manual-error').hidden = false;
+    }
   }
 
   function closeSplit() {
@@ -2385,7 +2499,9 @@
       const rb = e.target.closest('[data-rule]');
       if (rb) { ruleAction(Number(rb.dataset.rule), rb.dataset.act); return; }
       const bank = e.target.closest('.conn-bank');
-      if (bank) { state.connBank = bank.dataset.bank; renderConnections(); window.scrollTo(0, 0); }
+      if (bank) { state.connBank = bank.dataset.bank; renderConnections(); window.scrollTo(0, 0); return; }
+      const manual = e.target.closest('[data-manual]');
+      if (manual) openManual(manual.dataset.manual);
     };
 
     $('tx-hero').onclick = (e) => {
@@ -2424,6 +2540,10 @@
     $('goal-cancel').onclick = closeGoalForm;
     $('goal-backdrop').onclick = closeGoalForm;
     $('split-backdrop').onclick = closeSplit;
+    $('manual-backdrop').onclick = closeManual;
+    $('manual-cancel').onclick = closeManual;
+    $('manual-save').onclick = submitManual;
+    $('manual-value').onkeydown = (e) => { if (e.key === 'Enter') submitManual(); };
     $('split-cancel').onclick = closeSplit;
     $('split-save').onclick = submitSplit;
     $('split-amt1').oninput = updateSplit;
@@ -2456,7 +2576,7 @@
   // ---------- Start ----------
 
   // Something open or saving that a reload or sign-in redirect would throw away.
-  const busy = () => writing > 0 || !$('sheet').hidden || !$('review').hidden || !$('goal-sheet').hidden || !$('split-sheet').hidden;
+  const busy = () => writing > 0 || !$('sheet').hidden || !$('review').hidden || !$('goal-sheet').hidden || !$('split-sheet').hidden || !$('manual-sheet').hidden;
 
   function start() {
     bind();

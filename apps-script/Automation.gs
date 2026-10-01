@@ -376,7 +376,8 @@ function remindManualAccounts_(ctx) {
   const manual = ctx.accounts.filter((a) => !a.hidden && isManual(a));
   if (!manual.length) return;
   notify_('manual:' + ctx.today.slice(0, 7), 'manual', 'Time to update your manual accounts',
-    manual.map((a) => `${a.name.trim()} (last updated ${a.updated ? day_(a.updated) : 'never'})`).join('\n'));
+    manual.map((a) => `${a.name.trim()} (last updated ${a.updated ? day_(a.updated) : 'never'})`).join('\n') +
+    '\nUpdate them in the app: Connections > Manual entries.');
 }
 
 function backupSpreadsheet_() {

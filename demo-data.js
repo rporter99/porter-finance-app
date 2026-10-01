@@ -94,6 +94,12 @@
   const demoGoals = [{ row: 2, name: 'Emergency fund', target: 25000, date: (() => { const d = new Date(); d.setMonth(d.getMonth() + 10); return key(d).slice(0, 7); })(), number: accounts[1].number }];
 
   window.DEMO_SOURCE = {
+    async updateManualBalance(a, value) {
+      await new Promise((r) => setTimeout(r, 400));
+      const acct = accounts.find((x) => x.id === a.id);
+      acct.balance = acct.liability ? -Math.abs(value) : value;
+      acct.updated = key(new Date());
+    },
     async splitTransaction(t, parts) {
       await new Promise((r) => setTimeout(r, 400));
       const i = txns.indexOf(t);

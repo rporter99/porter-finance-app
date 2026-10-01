@@ -161,6 +161,16 @@
     <button id="split-save" class="btn-primary">Split</button>
   </div>
 
+  <!-- New value for a manual account -->
+  <div id="manual-backdrop" class="sheet-backdrop" hidden></div>
+  <div id="manual-sheet" class="sheet goal-sheet" role="dialog" aria-modal="true" aria-labelledby="manual-title" hidden>
+    <div class="sheet-handle"></div>
+    <div class="sheet-head"><div><div id="manual-title" class="sheet-title"></div><div id="manual-sub" class="muted small"></div></div><button id="manual-cancel" class="text-btn">Cancel</button></div>
+    <label class="field"><span>New value</span><input id="manual-value" type="text" inputmode="decimal" autocomplete="off"></label>
+    <p id="manual-error" class="error" hidden></p>
+    <button id="manual-save" class="btn-primary">Save value</button>
+  </div>
+
   <!-- Review queue -->
   <div id="review" class="review" role="dialog" aria-label="Review transactions" hidden></div>
 
