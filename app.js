@@ -1638,7 +1638,7 @@
       html += `<div class="section-label">Manual entries</div><div class="card">`;
       for (const a of manual) {
         const days = daysSince(a.updated);
-        html += `<button class="row" data-manual="${esc(a.id)}"><div class="name"><div>${esc(a.name.trim())}</div>
+        html += `<button class="row manual-row" data-manual="${esc(a.id)}"><div class="name"><div>${esc(manualName(a))}</div>
           <div class="muted small">Updated ${days === null ? 'never' : agoDays(days)}</div></div>
           <div class="amt">${fmt0(Math.abs(a.balance))}</div><span class="chev">›</span></button>`;
       }
@@ -2127,21 +2127,26 @@
 
   // ---------- Manual account values ----------
 
+  // Long names drop a trailing "Value" ("Primary Real Estate Value" -> "Primary Real Estate").
+  const manualName = (a) => { const n = a.name.trim(); return n.length > 18 ? n.replace(/\s+value$/i, '') : n; };
+
   function openManual(id) {
     const a = state.data.accounts.find((x) => x.id === id);
     if (!a) return;
     state.manualEditing = a;
     const days = daysSince(a.updated);
-    $('manual-title').textContent = a.name.trim();
+    $('manual-title').textContent = manualName(a);
     $('manual-sub').textContent = `Now ${fmt0(Math.abs(a.balance))} · updated ${days === null ? 'never' : agoDays(days)}`;
-    $('manual-value').value = '';
-    $('manual-value').placeholder = String(Math.round(Math.abs(a.balance)));
+    // Starts with the current value: change it, or save it as-is to confirm it's still right.
+    $('manual-value').value = Math.round(Math.abs(a.balance)).toLocaleString('en-US');
+    $('manual-value').placeholder = 'New value';
     $('manual-error').hidden = true;
     $('manual-save').disabled = false;
     $('manual-save').textContent = 'Save value';
     $('manual-backdrop').hidden = false;
     $('manual-sheet').hidden = false;
     $('manual-value').focus();
+    $('manual-value').select();
   }
 
   function closeManual() {
@@ -2166,7 +2171,7 @@
     try {
       await source.updateManualBalance(a, value);
       closeManual();
-      toast(`${a.name.trim()} updated to ${fmt0(value)}`, 3000);
+      toast(`${manualName(a)} updated to ${fmt0(value)}`, 3000);
       await loadData({ quiet: true });
     } catch (e) {
       $('manual-save').disabled = false;

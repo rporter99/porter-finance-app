@@ -433,3 +433,7 @@ button.acct-row { font: inherit; color: inherit; }
 /* Split: amount with a Half button */
 .split-amt { display: flex; gap: 6px; align-items: center; }
 .split-amt input { flex: 1; min-width: 0; }
+
+/* Manual entries: values line up on the right */
+.manual-row .name { flex: 1; }
+.manual-row .amt { text-align: right; font-variant-numeric: tabular-nums; }
