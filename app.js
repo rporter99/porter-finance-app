@@ -99,6 +99,8 @@
   const STATE_KEY = 'pf_oauth_state';
   const RETURNING_KEY = 'pf_returning';
   const HINT_KEY = 'pf_login_hint';   // which Google account was used, so silent sign-in never has to ask
+  const AUTHUSER_KEY = 'pf_authuser'; // Google's own index for that account on this phone (fallback hint)
+  const LAST_SILENT_KEY = 'pf_last_silent'; // what the last automatic sign-in attempt came back with
 
   const redirectUri = () => location.origin + location.pathname.replace(/index\.html$/, '');
 
@@ -145,8 +147,10 @@
       state: nonce,
     });
     if (silent) params.set('prompt', 'none');
-    const hint = localStorage.getItem(HINT_KEY);
+    const hint = localStorage.getItem(HINT_KEY), au = localStorage.getItem(AUTHUSER_KEY);
     if (hint) params.set('login_hint', hint);
+    if (au) params.set('authuser', au);
+    localStorage.setItem(LAST_SILENT_KEY, silent ? 'tried' : '');
     location.assign('https://accounts.google.com/o/oauth2/v2/auth?' + params);
   }
 
@@ -160,6 +164,7 @@
     localStorage.removeItem(STATE_KEY);
     if (!expected || p.get('state') !== expected) return { error: "Sign-in couldn't be verified. Try again." };
     const err = p.get('error');
+    if (localStorage.getItem(LAST_SILENT_KEY) === 'tried') localStorage.setItem(LAST_SILENT_KEY, err || 'ok');
     if (err) {
       if (['interaction_required', 'login_required', 'consent_required'].includes(err)) return { error: null, needsTap: true };
       localStorage.removeItem(HINT_KEY);   // a real failure: next time let Google show its account list
@@ -173,6 +178,7 @@
       exp: Date.now() + Number(p.get('expires_in') || 3600) * 1000,
     }));
     localStorage.setItem(RETURNING_KEY, '1');
+    if (p.get('authuser') !== null) localStorage.setItem(AUTHUSER_KEY, p.get('authuser'));
     rememberAccount(p.get('access_token'));
     return { ok: true };
   }
@@ -2425,6 +2431,10 @@
     $('signin').hidden = false;
     $('signin-error').hidden = !error;
     $('signin-error').textContent = error || '';
+    // A quiet status line, so a stuck automatic sign-in can be diagnosed from the phone.
+    const last = localStorage.getItem(LAST_SILENT_KEY);
+    const remembered = localStorage.getItem(HINT_KEY) ? 'yes' : localStorage.getItem(AUTHUSER_KEY) ? 'partly' : 'no';
+    $('signin-note').textContent = `Automatic sign-in: ${last && last !== 'tried' && last !== '' ? last.replace(/_/g, ' ') : 'not tried'} · account remembered: ${remembered}`;
   }
 
   function showApp() {
