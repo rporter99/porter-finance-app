@@ -98,6 +98,7 @@
   const TOKEN_KEY = 'pf_token';
   const STATE_KEY = 'pf_oauth_state';
   const RETURNING_KEY = 'pf_returning';
+  const HINT_KEY = 'pf_login_hint';   // which Google account was used, so silent sign-in never has to ask
 
   const redirectUri = () => location.origin + location.pathname.replace(/index\.html$/, '');
 
@@ -144,6 +145,8 @@
       state: nonce,
     });
     if (silent) params.set('prompt', 'none');
+    const hint = localStorage.getItem(HINT_KEY);
+    if (hint) params.set('login_hint', hint);
     location.assign('https://accounts.google.com/o/oauth2/v2/auth?' + params);
   }
 
@@ -159,6 +162,7 @@
     const err = p.get('error');
     if (err) {
       if (['interaction_required', 'login_required', 'consent_required'].includes(err)) return { error: null, needsTap: true };
+      localStorage.removeItem(HINT_KEY);   // a real failure: next time let Google show its account list
       return { error: err === 'access_denied' ? 'Sign-in was cancelled.' : 'Sign-in failed. Try again.' };
     }
     if (!(p.get('scope') || '').includes(SCOPE)) {
@@ -169,7 +173,19 @@
       exp: Date.now() + Number(p.get('expires_in') || 3600) * 1000,
     }));
     localStorage.setItem(RETURNING_KEY, '1');
+    rememberAccount(p.get('access_token'));
     return { ok: true };
+  }
+
+  // Asks Google which account this token belongs to (its ID only, no email or name) and keeps
+  // that so later sign-ins can skip the "choose an account" screen.
+  async function rememberAccount(token) {
+    try {
+      const res = await fetch('https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=' + encodeURIComponent(token), { cache: 'no-store' });
+      if (!res.ok) return;
+      const info = await res.json();
+      if (info.sub) localStorage.setItem(HINT_KEY, info.sub);
+    } catch (_) { /* not essential */ }
   }
 
   class AuthError extends Error {}
