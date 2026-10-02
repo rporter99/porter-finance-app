@@ -933,8 +933,32 @@
     updateConnectionsBadge();
   }
 
+  // Gray placeholders in the shape of the screen while the sheet loads.
   function renderLoading() {
-    $('view-' + state.tab).innerHTML = '<div class="loading">Loading your data…</div>';
+    const row = (w1, w2, w3) => `<div class="sk-row"><div style="flex:1"><div class="sk" style="width:${w1}%"></div><div class="sk" style="width:${w2}%"></div></div><div class="sk" style="width:${w3}px"></div></div>`;
+    const bar = (w1, w3) => `<div class="sk-row" style="display:block"><div style="display:flex;justify-content:space-between"><div class="sk" style="width:${w1}%"></div><div class="sk" style="width:${w3}px"></div></div><div class="sk sk-bar"></div></div>`;
+    const list = state.tab === 'budget'
+      ? `<div class="card">${bar(34, 90)}${bar(42, 80)}${bar(28, 96)}</div><div class="sk sk-label"></div><div class="card">${bar(38, 84)}${bar(30, 70)}</div>`
+      : `<div class="card">${row(52, 36, 72)}${row(44, 30, 84)}${row(36, 40, 64)}</div><div class="sk sk-label"></div><div class="card">${row(40, 44, 78)}${row(48, 28, 70)}</div>`;
+    $('view-' + state.tab).innerHTML = `<div class="sk sk-hero" aria-label="Loading"></div><div class="sk sk-label"></div>${list}`;
+  }
+
+  // Empty states: a quiet icon and one line.
+  const EMPTY_ICONS = {
+    list: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 10h8M8 14h5"/></svg>',
+    chart: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v8l5.5 5.5"/></svg>',
+    search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>',
+    check: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.3 2.3L15.5 10"/></svg>',
+  };
+  const emptyHtml = (icon, text, sub) => `<div class="empty">${EMPTY_ICONS[icon] || ''}<div><b>${text}</b></div>${sub ? `<div class="small">${sub}</div>` : ''}</div>`;
+
+  // A steady color per bank, for the little dot before its name.
+  const INST_COLORS = ['#1d5fa5', '#0f6e56', '#993c1d', '#7f77dd', '#993556', '#854f0b', '#3f7c96', '#5f5e5a'];
+  function instDot(name) {
+    if (!name) return '';
+    let h = 0;
+    for (const ch of name.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return `<i class="inst-dot" style="background:${INST_COLORS[h % INST_COLORS.length]}"></i>`;
   }
 
   const ASSET_ORDER = ['Bank Accounts', 'Investments'];
@@ -959,7 +983,7 @@
       for (const a of list) {
         const sub = [a.institution, a.number].filter(Boolean).join(' · ');
         html += `<button class="row acct-row" data-acct="${esc(acctKey(a.name, a.number))}"><div class="name"><div>${esc(a.name)}</div>
-          <div class="muted small">${esc(sub)}</div></div>
+          <div class="muted small">${instDot(a.institution)}${esc(sub)}</div></div>
           <div class="amt">${fmt(a.balance)} <span class="chev">›</span></div></button>`;
       }
       html += '</div>';
@@ -1074,7 +1098,7 @@
     html += goalsHtml();
     html += renderClass('Assets', accts.filter((a) => !a.liability), ASSET_ORDER);
     html += renderClass('Liabilities', accts.filter((a) => a.liability), LIABILITY_ORDER);
-    if (!accts.length) html += '<div class="empty">No accounts found on the Accounts tab.</div>';
+    if (!accts.length) html += emptyHtml('list', 'No accounts yet', 'Accounts appear here once Tiller fills the Accounts tab.');
     html += `<div class="footnote">Updated ${ago(state.loadedAt)}${DEMO ? ' · demo data' : ''}</div>`;
     $('view-home').innerHTML = html;
   }
@@ -1170,7 +1194,7 @@
       }
       html += '</div>';
     }
-    if (!items.length) html += `<div class="empty">No budget or spending for ${monthName} on the Categories tab.</div>`;
+    if (!items.length) html += emptyHtml('chart', `Nothing to show for ${monthName}`, 'Set budgets on the Categories tab, or pick another month.');
     $('view-budget').innerHTML = html;
   }
 
@@ -1245,7 +1269,7 @@
     html += budgetMonthSelect();
     html += `<div class="card donut-card"><div class="donut-head">${rangeSeg()}</div>`;
     if (!rows.length) {
-      $('view-budget').innerHTML = html + `<div class="empty">No spending in ${esc(chartLabel(month))}.</div></div>`;
+      $('view-budget').innerHTML = html + emptyHtml('chart', `No spending in ${esc(chartLabel(month))}`) + '</div>';
       return;
     }
     html += `<svg viewBox="0 0 42 42" class="donut donut-big" role="img" aria-label="Spending by category">
@@ -1288,7 +1312,7 @@
       <div class="small ${over ? 'neg' : 'muted'}">${budget ? (isOver ? fmt0(spent - budget) + ' over' : fmt0(budget - spent) + ' left') : 'No budget set'} · ${list.length} transaction${list.length === 1 ? '' : 's'}</div>
       <div class="bar progress-total ${budgetStatus(spent, budget)}"><i style="width:${w}%"></i></div></div>`;
     html += budgetMonthSelect();
-    html += list.length ? txGroupsHtml(list, false) : `<div class="empty">No ${esc(name)} transactions in ${label}.</div>`;
+    html += list.length ? txGroupsHtml(list, false) : emptyHtml('list', `No ${esc(name.trim())} transactions`, `Nothing in this category for ${label}.`);
     $('view-budget').innerHTML = html;
   }
 
@@ -1440,7 +1464,7 @@
       html += `<div class="tx-total"><b>${list.length} transaction${list.length === 1 ? '' : 's'}</b>
         <span>${out ? `${fmt(out)} out` : ''}${out && inn ? ' · ' : ''}${inn ? `<span class="pos">+${fmt(inn)} in</span>` : ''}</span></div>`;
     }
-    html += list.length ? txGroupsHtml(shown, state.sort === 'account') : `<div class="empty">No transactions match.</div>`;
+    html += list.length ? txGroupsHtml(shown, state.sort === 'account') : emptyHtml('search', 'No transactions match', state.search.trim() ? 'Try a shorter search, or clear a filter.' : 'Try clearing a filter.');
     if (list.length > shown.length) html += `<button class="show-more" id="show-more">Show more (${list.length - shown.length} left)</button>`;
     if (state.data.hasOlder && !state.fullHistory && list.length <= shown.length) {
       html += `<button class="show-more" id="load-older">Load transactions before ${monthLabel(state.data.historyFrom.slice(0, 7))}</button>`;
@@ -2306,7 +2330,7 @@
       html += `<button class="cat-opt ${isCur ? 'current' : ''}" data-cat="${esc(c.name)}"><span>${esc(c.name)}</span><span>${isCur ? '✓' : ''}</span></button>`;
     }
     if (group !== null) html += '</div>';
-    $('cat-list').innerHTML = html || '<div class="empty">No matching categories.</div>';
+    $('cat-list').innerHTML = html || emptyHtml('search', 'No matching categories');
   }
 
   function chooseCategory(name) {
@@ -2332,9 +2356,16 @@
   let toastTimer;
   function toast(msg, ms = 2200) {
     clearTimeout(toastTimer);
-    $('toast').textContent = msg;
-    $('toast').hidden = !msg;
-    if (msg && ms) toastTimer = setTimeout(() => { $('toast').hidden = true; }, ms);
+    const el = $('toast');
+    el.classList.remove('leaving');
+    el.textContent = msg;
+    el.hidden = !msg;
+    if (msg && ms) {
+      toastTimer = setTimeout(() => {
+        el.classList.add('leaving');
+        toastTimer = setTimeout(() => { el.hidden = true; el.classList.remove('leaving'); }, 220);
+      }, ms);
+    }
   }
 
   function showBanner(msg, label, action) {
