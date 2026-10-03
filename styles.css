@@ -256,10 +256,10 @@ select { appearance: none; -webkit-appearance: none; padding-right: 28px;
 .hero.photo .bar.warn i { background: #e0bb62; }
 .hero.photo .bar.over i { background: #d0808c; }
 .hero.photo .warn { color: #e6c77a; }
-.hero.photo-accounts { background-image: url("images/accounts.jpg"); background-position: center 40%; }
-.hero.photo-budget { background-image: url("images/budget.jpg"); background-position: center 45%; }
-.hero.photo-transactions { background-image: url("images/transactions.jpg"); background-position: center 50%; }
-.hero.photo-connections { background-image: url("images/connections.jpg"); background-position: center 55%; }
+.hero.photo-accounts { background-image: var(--photo-accounts, url("images/accounts.jpg")); background-position: center 40%; }
+.hero.photo-budget { background-image: var(--photo-budget, url("images/budget.jpg")); background-position: center 45%; }
+.hero.photo-transactions { background-image: var(--photo-transactions, url("images/transactions.jpg")); background-position: center 50%; }
+.hero.photo-connections { background-image: var(--photo-connections, url("images/connections.jpg")); background-position: center 55%; }
 .hero.photo .filled { background: rgba(255, 255, 255, 0.92); color: #1f1b24; border-radius: 12px; }
 .hero.photo .filled .small { color: #72695f; }
 .hero.photo .filled.late .small { color: #854f0b; }
@@ -529,3 +529,67 @@ button.acct-row { font: inherit; color: inherit; }
 .gi { display: inline-flex; vertical-align: -3px; margin-right: 6px; }
 .gi svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
 .acct-row .name .small, .manual-row .name .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Connections: status tiles, dots, fill strip, legend */
+.ic-st-ok { background: #e1f5ee; color: #0f6e56; }
+.ic-st-check { background: var(--warn-soft); color: var(--warn-text); }
+.ic-st-fix { background: var(--bad-soft); color: var(--bad); }
+.ic-alert { background: var(--track); color: var(--muted); }
+.ic-a-duplicate, .ic-a-doublecharge { background: #eeedfe; color: #534ab7; }
+.ic-a-bill { background: var(--warn-soft); color: var(--warn-text); }
+.ic-a-largecharge, .ic-a-newmerchant { background: #fbeaf0; color: #993556; }
+.ic-a-manual { background: #e6f1fb; color: #185fa5; }
+.ic-a-error { background: var(--bad-soft); color: var(--bad); }
+@media (prefers-color-scheme: dark) {
+  .ic-st-ok { background: #063d30; color: #5dcaa5; }
+  .ic-a-duplicate, .ic-a-doublecharge { background: #26215c; color: #afa9ec; }
+  .ic-a-largecharge, .ic-a-newmerchant { background: #4b1528; color: #ed93b1; }
+  .ic-a-manual { background: #0c2f52; color: #85b7eb; }
+}
+.sdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 7px 2px 0; vertical-align: middle; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35); }
+.sdot.ok { background: #5dcaa5; } .sdot.check { background: #e8c56d; } .sdot.fix { background: #e0969c; }
+.hero .sep { opacity: 0.5; margin: 0 2px; }
+.fill-strip { display: flex; align-items: center; gap: 10px; padding: 2px 0 12px; }
+.fill-strip .sdot { flex-shrink: 0; margin: 0; width: 12px; height: 12px; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 0%, var(--track)); }
+.fill-strip .name { flex: 1; min-width: 0; }
+.fill-strip b { font-weight: 600; }
+.conn-console { margin-top: 0; }
+.conn-bank .name, .alert-row .name { flex: 1; }
+.upd { flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--accent); background: var(--accent-soft); padding: 5px 10px; border-radius: 10px; }
+.legend { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; }
+.legend .sdot { width: 8px; height: 8px; margin-right: 5px; box-shadow: none; }
+
+/* Budget header ring */
+.hero.budget-hero { flex-direction: row; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.hero-text { min-width: 0; }
+.ring { position: relative; width: 84px; height: 84px; flex-shrink: 0; }
+.ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring-track { fill: none; stroke: rgba(255, 255, 255, 0.28); stroke-width: 4.5; }
+.ring-arc { fill: none; stroke: #fff; stroke-width: 4.5; stroke-linecap: round; transition: stroke-dasharray 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.ring.warn .ring-arc { stroke: #e8c56d; } .ring.over .ring-arc { stroke: #e0969c; }
+.ring-tick { stroke: rgba(255, 255, 255, 0.95); stroke-width: 1.6; stroke-linecap: round; }
+.ring-mid { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; }
+.ring-mid b { font-family: var(--font-num); font-size: 17px; font-weight: 800; letter-spacing: -0.02em; }
+.ring-mid span { font-size: 10px; opacity: 0.85; }
+
+/* Review: progress ring and done check */
+.rv-ring { position: relative; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; }
+.rv-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.rv-ring .ring-track { stroke: var(--track); stroke-width: 4; }
+.rv-ring .ring-arc { stroke: var(--accent); stroke-width: 4; }
+.rv-ring .small { font-size: 10px; font-weight: 600; }
+.rv-check { width: 72px; height: 72px; margin: 0 auto 14px; color: var(--bar-ok); }
+.rv-check svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.rv-check circle { stroke-dasharray: 63; stroke-dashoffset: 63; animation: draw 0.6s ease-out forwards; }
+.rv-check path { stroke-dasharray: 20; stroke-dashoffset: 20; animation: draw 0.4s 0.45s ease-out forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+
+/* Savings goals with a tile */
+.goal-row { display: flex; gap: 10px; align-items: flex-start; }
+.goal-row .ic { margin-top: 2px; }
+.goal-body { flex: 1; min-width: 0; }
+.hero.photo-connections .big.stack { font-size: 22px; line-height: 1.3; }
+.goal-row .budget-top > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.goal-row .budget-top > span:last-child { white-space: nowrap; flex-shrink: 0; }
+.goal-row .budget-top > span:last-child { font-size: 14px; }
+.goal-row .budget-top .of { font-size: 12px; }

@@ -53,6 +53,10 @@ const SETTINGS = [
   ['Quiet hours', '22 to 7', 'Alerts between these hours (24-hour clock) arrive without a sound.'],
   ['Also email alerts', 'No', 'Yes to get an email as well as the phone alert.'],
   ['Quiet account alert (days)', 5, 'Alert when a card or account you normally use often has had no new transactions for this many days (the bank feed may be stuck). 0 turns it off.'],
+  ['Photo: Accounts', '', 'Optional. A direct https link to an image (ends in .jpg or .png) for the Accounts header in the app. Blank keeps the built-in photo.'],
+  ['Photo: Budget', '', 'Optional. Image link for the Budget header.'],
+  ['Photo: Transactions', '', 'Optional. Image link for the Transactions header.'],
+  ['Photo: Connections', '', 'Optional. Image link for the Connections header.'],
   ['Ignore accounts for connection alerts', '', 'Accounts to leave out of "stopped updating" alerts: last 4 digits (like 1234) or exact names, separated by commas.'],
 ];
 

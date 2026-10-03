@@ -21,6 +21,7 @@
     limit: PAGE_SIZE,
     editing: null,
     budgetCat: null,     // category open on the Budget screen, if any
+    countUp: false,      // animate the big figures on the next render
     chartFull: false,    // full spending chart open on the Budget screen
     chartOpen: null,     // category expanded in the full chart
     review: null,        // review queue state while it's open
@@ -397,6 +398,12 @@
       const goalRows = extraRanges[3] ? all[x++] : [];
       const setting = (name) => String((settingRows.find((r) => String(r[0] ?? '').trim() === name) || [])[1] ?? '');
       const ignore = setting('Ignore accounts for connection alerts').split(',').map((v) => v.trim().toLowerCase()).filter(Boolean);
+      // Optional header photos: "Photo: Accounts" etc. on the Automation Settings tab (direct https image links).
+      const photos = {};
+      for (const k of ['Accounts', 'Budget', 'Transactions', 'Connections']) {
+        const u = setting('Photo: ' + k).trim();
+        if (/^https:\/\/[^\s"'()<>]+$/i.test(u)) photos[k.toLowerCase()] = u;
+      }
       const txns = this.parseTransactions(all.slice(0, txRanges.length)).filter((t) => !cutoff || t.date >= cutoff);
       let k = txRanges.length;
       const catColsData = catIdx.map((i) => (i >= 0 ? all[k++].map((r) => r[0]) : []));
@@ -504,7 +511,7 @@
         count: Number(r[3]) || 0, uncategorized: Number(r[4]) || 0,
       })).filter((r) => !r.status && r.keyword && r.category);
 
-      return { accounts, categories, txns, netWorthStart, alerts, rules, ignore, hasNote: !!tx.Note, hasReviewed: !!tx.Reviewed,
+      return { accounts, categories, txns, netWorthStart, alerts, rules, ignore, photos, hasNote: !!tx.Note, hasReviewed: !!tx.Reviewed,
         historyFrom: cutoff, hasOlder, goals, balAgo, hasAsk: !!tx.Ask };
     },
 
@@ -927,6 +934,8 @@
       if (state.data && (writing || seq !== writeSeq)) { reloadQueued = true; return 'queued'; }
       state.data = data;
       state.data.txns.forEach((t, i) => { t.idx = i; });
+      state.countUp = !quiet || !state.loadedAt;
+      applyPhotos(data.photos);
       state.loadedAt = Date.now();
       hideBanner();
       fillFilters();
@@ -952,6 +961,32 @@
     }
   }
 
+  // Header photos chosen on the Automation Settings tab replace the built-in ones.
+  function applyPhotos(photos) {
+    const root = document.documentElement.style;
+    for (const k of ['accounts', 'budget', 'transactions', 'connections']) {
+      const u = photos && photos[k];
+      if (u) root.setProperty(`--photo-${k}`, `url("${u.replace(/"/g, '%22')}")`);
+      else root.removeProperty(`--photo-${k}`);
+    }
+  }
+
+  // Big figures count up from zero the first time they appear after a load.
+  function animateCounts() {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    document.querySelectorAll('[data-count]').forEach((el) => {
+      const target = Number(el.dataset.count);
+      if (!isFinite(target)) return;
+      const start = performance.now(), dur = 650;
+      const step = (now) => {
+        const p = Math.min(1, (now - start) / dur), e = 1 - Math.pow(1 - p, 3);
+        el.textContent = fmt0(target * e);
+        if (p < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
   // ---------- Rendering ----------
 
   const TITLES = { home: 'Accounts', budget: 'Budget', tx: 'Transactions', connections: 'Connections' };
@@ -965,6 +1000,7 @@
     if (state.tab === 'budget') renderBudget();
     if (state.tab === 'tx') renderTx();
     if (state.tab === 'connections') renderConnections();
+    if (state.countUp) { state.countUp = false; animateCounts(); }
     updateConnectionsBadge();
   }
 
@@ -1015,6 +1051,16 @@
     receipt: 'M6 3h12v18l-2-1.5L14 21l-2-1.5L10 21l-2-1.5L6 21zM9 8h6M9 12h6M9 16h4',
     tag: 'M4 4h7l9 9-7 7-9-9zM8 8h.01',
     user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
+    plug: 'M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4',
+    bell: 'M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 21h4',
+    copy: 'M8 8h11v12H8zM5 16V4h11',
+    calendar: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4M8 14h.01M12 14h.01M16 14h.01',
+    pencil: 'M4 20l4-1 11-11-3-3L5 16zM13 7l3 3',
+    listcheck: 'M4 7l2 2 3-3M4 13l2 2 3-3M4 19l2 2 3-3M12 7h8M12 13h8M12 19h8',
+    faceid: 'M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M9 10h.01M15 10h.01M12 10v3h-1M9 15a4 4 0 0 0 6 0',
+    wand: 'M4 20l10-10M14 4l.8 2.2L17 7l-2.2.8L14 10l-.8-2.2L11 7l2.2-.8zM19 12l.5 1.5L21 14l-1.5.5L19 16l-.5-1.5L17 14l1.5-.5z',
+    alert: 'M12 4l9 16H3zM12 10v4M12 17h.01',
+    check: 'M5 12l4.5 4.5L19 7',
   };
   const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON_PATHS[name] || ICON_PATHS.tag}"/></svg>`;
 
@@ -1029,6 +1075,12 @@
     return 'bank';
   }
   const acctIcon = (a) => { const k = accountKind(a); return `<span class="ic ic-${k}">${icon(k)}</span>`; };
+
+  // Section labels with a small leading icon (Connections uses these).
+  const secLabel = (ic, title, right = '') => `<div class="section-label"><span><span class="gi">${icon(ic)}</span>${title}</span>${right}</div>`;
+  const ALERT_ICONS = { duplicate: 'copy', 'double-charge': 'copy', bill: 'calendar', 'large-charge': 'bell', 'new-merchant': 'tag',
+    manual: 'pencil', connection: 'plug', fill: 'plug', pacing: 'chart', rule: 'wand', reimburse: 'coins', error: 'alert' };
+  const alertIcon = (type) => `<span class="ic ic-alert ic-${ALERT_ICONS[type] ? 'a-' + type.replace(/[^a-z]/g, '') : 'a-other'}">${icon(ALERT_ICONS[type] || 'bell')}</span>`;
 
   // A small icon beside each budget group, picked from the group's name.
   const GROUP_ICONS = [
@@ -1125,10 +1177,10 @@
       const when = g.date ? `by ${monthLabel(g.date).replace(/ (\d{4})$/, ' $1')}` : '';
       const note = st.status === 'done' ? 'Goal reached' : st.status === 'pace' ? 'on pace'
         : `${fmt0(st.needed)}/mo needed`;
-      h += `<button class="goal-row" data-goal="${g.row}"><div class="budget-top"><span>${esc(g.name)}</span>
+      h += `<button class="goal-row" data-goal="${g.row}"><span class="ic ic-piggy">${icon('piggy')}</span><div class="goal-body"><div class="budget-top"><span>${esc(g.name)}</span>
         <span>${fmt0(st.current)} <span class="of">of ${fmt0(g.target)}</span> <span class="chev">›</span></span></div>
         <div class="bar ${st.status === 'behind' ? 'warn' : ''}"><i style="width:${pct}%"></i></div>
-        <div class="muted small goal-sub">${esc(st.a ? st.a.name.trim() : 'Account not found')}${when ? ' · ' + when : ''} · ${note}</div></button>`;
+        <div class="muted small goal-sub">${esc(st.a ? st.a.name.trim() : 'Account not found')}${when ? ' · ' + when : ''} · ${note}</div></div></button>`;
     }
     return h + `</div><button class="btn-soft btn-block goal-add-btn" id="goal-add">+ Add a goal</button>`;
   }
@@ -1189,7 +1241,7 @@
       change = `<div class="${d >= 0 ? 'pos' : 'neg'} small">${d >= 0 ? '+' : '−'}${fmt0(Math.abs(d))} this month</div>`;
     }
 
-    let html = `<div class="hero photo photo-accounts"><div class="label">Net worth</div><div class="big">${fmt0(net)}</div>${change}</div>`;
+    let html = `<div class="hero photo photo-accounts"><div class="label">Net worth</div><div class="big"><span data-count="${net}">${fmt0(net)}</span></div>${change}</div>`;
     html += goalsHtml();
     html += renderClass('Assets', accts.filter((a) => !a.liability), ASSET_ORDER);
     html += renderClass('Liabilities', accts.filter((a) => a.liability), LIABILITY_ORDER);
@@ -1257,9 +1309,20 @@
       const daysLeft = new Date(y, m, 0).getDate() - now.getDate();
       when = daysLeft === 0 ? 'Last day of the month' : `${daysLeft} day${daysLeft === 1 ? '' : 's'} to go`;
     }
-    let html = `<div class="hero photo photo-budget budget-hero">
-      <div class="big">${fmt0(totalSpent)} <span class="muted small" style="font-weight:400">of ${fmt0(totalBudget)}</span></div>
-      <div class="small ${budgetStatus(totalSpent, totalBudget) === 'over' ? 'neg' : 'muted'}">${left >= 0 ? fmt0(left) + ' left' : fmt0(-left) + ' over'} · ${when}</div></div>`;
+    // Ring on the right: how much of the budget is used, with a tick for how far through the month we are.
+    const usedPct = totalBudget > 0 ? Math.min(1, totalSpent / totalBudget) : 0;
+    const dim = new Date(y, m, 0).getDate();
+    const elapsed = month < thisMonth() ? 1 : month > thisMonth() ? 0 : Math.min(1, new Date().getDate() / dim);
+    const C = 2 * Math.PI * 15.915;
+    const ringStatus = budgetStatus(totalSpent, totalBudget);
+    const ring = totalBudget > 0 ? `<div class="ring ${ringStatus}" role="img" aria-label="${Math.round(usedPct * 100)}% of budget used">
+      <svg viewBox="0 0 42 42"><circle class="ring-track" cx="21" cy="21" r="15.915"/>
+      <circle class="ring-arc" cx="21" cy="21" r="15.915" stroke-dasharray="${(usedPct * C).toFixed(2)} ${C.toFixed(2)}"/>
+      <line class="ring-tick" x1="21" y1="3.2" x2="21" y2="7.2" transform="rotate(${(elapsed * 360).toFixed(1)} 21 21)"/></svg>
+      <div class="ring-mid"><b>${Math.round(usedPct * 100)}%</b><span>used</span></div></div>` : '';
+    let html = `<div class="hero photo photo-budget budget-hero"><div class="hero-text">
+      <div class="big"><span data-count="${totalSpent}">${fmt0(totalSpent)}</span> <span class="muted small" style="font-weight:400">of ${fmt0(totalBudget)}</span></div>
+      <div class="small ${ringStatus === 'over' ? 'neg' : 'muted'}">${left >= 0 ? fmt0(left) + ' left' : fmt0(-left) + ' over'} · ${when}</div></div>${ring}</div>`;
     html += budgetMonthSelect();
     html += donutHtml(month);
 
@@ -1649,8 +1712,10 @@
     const hours = (sheetSerialNow() - last) * 24;
     const ago = hours < 1 ? 'less than an hour ago' : hours < 48 ? `${Math.floor(hours)} hr ago` : `${Math.floor(hours / 24)} days ago`;
     const late = hours > FILL_LATE_HOURS;
-    return `<div class="filled ${late ? 'late' : ''}"><span>Sheet last filled</span><b>${when.replace(',', '').replace(/, (\d)/, ' at $1')} PT</b>
-      <span class="small">${ago}${late ? ' · Nothing new in 2 days. Check that AutoFill is on.' : ''}</span></div>`;
+    const stale = hours > 24 && !late;
+    return `<div class="fill-strip ${late ? 'late' : stale ? 'stale' : 'ok'}"><span class="sdot ${late ? 'fix' : stale ? 'check' : 'ok'}"></span>
+      <div class="name"><div><b>Sheet updated ${ago}</b></div>
+      <div class="muted small">${when.replace(',', '').replace(/, (\d)/, ' at $1')} PT${late ? ' · Nothing new in 2 days. Check that AutoFill is on.' : ''}</div></div></div>`;
   }
 
   // Transactions whose category matches a budget category except for spaces or capitals.
@@ -1673,7 +1738,7 @@
   function sheetCheckHtml(issues) {
     const { fixable } = issues;
     if (!fixable.length) return '';
-    let h = `<div class="section-label">Sheet check</div><div class="card">`;
+    let h = secLabel('listcheck', 'Sheet check') + `<div class="card">`;
     if (fixable.length) {
       h += `<div class="row"><div class="name"><div class="wrap">${fixable.length} transaction${fixable.length === 1 ? ' uses' : 's use'} a category name that's slightly off</div>
         <div class="muted small wrap">An extra space or capital letter, so Tiller leaves ${fixable.length === 1 ? 'it' : 'them'} out of budgets</div></div>
@@ -1725,48 +1790,49 @@
     const dups = duplicates();
 
     const parts = [];
-    if (fix.length) parts.push(`${fix.length} need${fix.length === 1 ? 's' : ''} a fix`);
-    if (check.length) parts.push(`${check.length} to check`);
+    if (fix.length) parts.push(`<span class="sdot fix"></span>${fix.length} need${fix.length === 1 ? 's' : ''} a fix`);
+    if (check.length) parts.push(`<span class="sdot check"></span>${check.length} to check`);
     let html = `<div class="hero photo photo-connections"><div class="label">Bank connections</div>
-      <div class="big">${parts.length ? parts.join(' · ') : 'All healthy'}</div></div>
+      <div class="big ${parts.length > 1 ? 'stack' : ''}">${parts.length ? parts.join('<br>') : '<span class="sdot ok"></span>All healthy'}</div></div>
       <div class="card conn-card">${lastFilledHtml()}
-      <a class="btn-primary btn-link conn-console" href="${TILLER_CONSOLE}" target="_blank" rel="noopener noreferrer">Open Tiller Console</a></div>`;
+      <a class="btn-soft btn-block btn-link conn-console" href="${TILLER_CONSOLE}" target="_blank" rel="noopener noreferrer">Open Tiller Console</a></div>`;
 
     html += alertsHtml();
     if (dups.safe.length || dups.review.length) html += duplicatesHtml(dups);
     html += rulesHtml();
     html += sheetCheckHtml(categoryIssues());
 
+    const STATUS_WORD = { ok: 'Updating normally', check: 'Check soon', fix: 'Needs a fix' };
     const section = (title, list) => {
       if (!list.length) return '';
-      let h = `<div class="section-label">${title}</div><div class="card">`;
+      let h = (title ? secLabel('plug', title) : '') + `<div class="card">`;
       for (const g of list) {
-        h += `<button class="row conn-bank" data-bank="${esc(g.name)}"><div class="name"><div>${esc(g.name)}</div>
-          <div class="muted small">${g.accts.length} account${g.accts.length === 1 ? '' : 's'} · ${agoDays(g.days)}</div></div>
-          <div>${STATUS_TAG[g.status]} <span class="chev">›</span></div></button>`;
+        h += `<button class="row conn-bank" data-bank="${esc(g.name)}"><span class="ic ic-st-${g.status}">${icon('plug')}</span><div class="name"><div>${esc(g.name)}</div>
+          <div class="muted small">${STATUS_WORD[g.status]} · ${g.accts.length} account${g.accts.length === 1 ? '' : 's'} · ${agoDays(g.days)}</div></div>
+          <span class="chev">›</span></button>`;
       }
       return h + '</div>';
     };
     html += section('Needs a fix', fix) + section('Check', check);
     if (ok.length) {
-      html += `<div class="section-label">Healthy</div><div class="card"><button class="row" id="toggle-healthy"><div class="name">
+      html += secLabel('plug', 'Healthy') + `<div class="card"><button class="row" id="toggle-healthy"><span class="ic ic-st-ok">${icon('plug')}</span><div class="name">
         <div>${ok.length} bank${ok.length === 1 ? '' : 's'} updating normally</div>
         <div class="muted small wrap">${esc(ok.map((g) => g.name).join(', '))}</div></div>
         <span class="chev${state.showHealthy ? ' open' : ''}">›</span></button></div>`;
-      if (state.showHealthy) html += section('', ok).replace('<div class="section-label"></div>', '');
+      if (state.showHealthy) html += section('', ok);
     }
     if (manual.length) {
-      html += `<div class="section-label">Manual entries</div><div class="card">`;
+      html += secLabel('pencil', 'Manual entries') + `<div class="card">`;
       for (const a of manual) {
         const days = daysSince(a.updated);
         html += `<button class="row manual-row" data-manual="${esc(a.id)}">${acctIcon(a)}<div class="name"><div>${esc(manualName(a))}</div>
           <div class="muted small">Updated ${days === null ? 'never' : agoDays(days)}</div></div>
-          <div class="amt">${fmt0(Math.abs(a.balance))}</div><span class="chev">›</span></button>`;
+          <div class="amt">${fmt0(Math.abs(a.balance))}</div><span class="upd">Update</span></button>`;
       }
-      html += `</div><div class="footnote">Tap one to enter a new value.</div>`;
+      html += `</div>`;
     }
     html += lockHtml();
-    html += `<div class="footnote">OK: updated within ${CONN_OK_DAYS} days · Check: ${CONN_OK_DAYS + 1}–${CONN_FIX_DAYS - 1} days · Needs a fix: ${CONN_FIX_DAYS}+ days</div>`;
+    html += `<div class="footnote legend"><span><i class="sdot ok"></i>Updated within ${CONN_OK_DAYS} days</span><span><i class="sdot check"></i>${CONN_OK_DAYS + 1}–${CONN_FIX_DAYS - 1} days</span><span><i class="sdot fix"></i>${CONN_FIX_DAYS}+ days</span></div>`;
     $('view-connections').innerHTML = html;
     bindAlertSwipes();
   }
@@ -1815,9 +1881,9 @@
       .filter((a) => !alertResolved(a))
       .slice(0, 6);
     if (!recent.length) return '';
-    let h = `<div class="section-label"><span>Recent alerts</span><span class="hint-sm">Swipe left to dismiss</span></div><div class="card">`;
+    let h = secLabel('bell', 'Recent alerts', '<span class="hint-sm">Swipe left to dismiss</span>') + `<div class="card">`;
     for (const a of recent) {
-      h += `<div class="row alert-row" data-alert="${esc(alertKey(a))}"><div class="name"><div class="wrap"><b>${esc(a.title)}</b></div>
+      h += `<div class="row alert-row" data-alert="${esc(alertKey(a))}">${alertIcon(a.type)}<div class="name"><div class="wrap"><b>${esc(a.title)}</b></div>
         <div class="muted small wrap">${esc(a.message).replace(/\n/g, '<br>')}</div>
         <div class="muted small">${serialToText(a.when)}</div></div>
         <button class="alert-x" aria-label="Dismiss alert">×</button></div>`;
@@ -1857,7 +1923,7 @@
   function rulesHtml() {
     const rules = state.data.rules || [];
     if (!rules.length) return '';
-    let h = `<div class="section-label">Suggested AutoCat rules</div><div class="card">`;
+    let h = secLabel('wand', 'Suggested AutoCat rules') + `<div class="card">`;
     rules.forEach((r, i) => {
       const busy = state.ruleBusy === i;
       h += `<div class="row rule-row"><div class="name"><div class="wrap">${esc(r.keyword)} → <b>${esc(r.category.trim())}</b></div>
@@ -1892,7 +1958,7 @@
 
   function duplicatesHtml(dups) {
     const n = dups.safe.reduce((s, g) => s + g.remove.length, 0);
-    let h = `<div class="section-label">Duplicate transactions</div><div class="card dup-card">`;
+    let h = secLabel('copy', 'Duplicate transactions') + `<div class="card dup-card">`;
     for (const g of dups.safe) {
       const t = g.keep;
       h += `<div class="row"><div class="name"><div>${esc(t.desc)}</div>
@@ -2036,11 +2102,15 @@
     const r = state.review;
     if (!r) return;
     const t = r.list[r.i];
+    const done = r.list.length ? r.i / r.list.length : 1;
+    const RC = 2 * Math.PI * 15.915;
     let html = `<div class="review-top"><button class="text-btn" id="rv-done">‹ Done</button><b>Review</b>
-      <span class="muted small">${t ? `${r.i + 1} of ${r.list.length}` : ''}</span></div>
-      <div class="bar rv-prog"><i style="width:${r.list.length ? (r.i / r.list.length) * 100 : 100}%"></i></div>`;
+      <span class="rv-ring" aria-label="${Math.round(done * 100)}% done"><svg viewBox="0 0 42 42"><circle class="ring-track" cx="21" cy="21" r="15.915"/>
+      <circle class="ring-arc" cx="21" cy="21" r="15.915" stroke-dasharray="${(done * RC).toFixed(2)} ${RC.toFixed(2)}"/></svg>
+      <span class="muted small">${t ? `${r.i + 1}/${r.list.length}` : ''}</span></span></div>`;
     if (!t) {
-      html += `<div class="rv-empty"><div class="big-sm">All caught up</div>
+      html += `<div class="rv-empty"><div class="rv-check"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M7 12.5l3.2 3.2L17 9"/></svg></div>
+        <div class="big-sm">All caught up</div>
         <div class="muted">Nothing is waiting for a category.</div>
         <button class="btn-primary" id="rv-finish">Done</button></div>`;
       $('review').innerHTML = html;
@@ -2194,7 +2264,7 @@
   function lockHtml() {
     if (!lockSupported()) return '';
     const on = lockEnabled();
-    return `<div class="section-label">This phone</div><div class="card"><div class="row"><div class="name">
+    return secLabel('faceid', 'This phone') + `<div class="card"><div class="row"><div class="name">
       <div>Face ID lock</div><div class="muted small wrap">${on ? 'On · asks after 5 minutes away' : 'Off'}</div></div>
       <button class="btn-mini${on ? ' ghost' : ''}" id="${on ? 'lock-off' : 'lock-on'}">${on ? 'Turn off' : 'Turn on'}</button></div></div>`;
   }
