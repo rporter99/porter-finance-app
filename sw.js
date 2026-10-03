@@ -1,6 +1,6 @@
 // Caches only the app's own files so it opens fast. Your financial data is
 // never cached: requests to Google are left alone.
-const CACHE = 'pf-shell-v41';
+const CACHE = 'pf-shell-v42';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'config.js', 'demo-data.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'images/accounts.jpg', 'images/budget.jpg', 'images/transactions.jpg', 'images/connections.jpg'];
 
 self.addEventListener('install', (e) => {

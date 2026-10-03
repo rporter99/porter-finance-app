@@ -990,7 +990,7 @@
   // Small outline icons (24x24 paths), drawn inline so they work offline and in both modes.
   const ICON_PATHS = {
     bank: 'M3 10l9-6 9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 18h18M3 21h18',
-    piggy: 'M5 11a6 6 0 0 1 6-6h3a5 5 0 0 1 5 5v1l2 1v3l-2 1a5 5 0 0 1-2 3v2h-3v-1.5H10V21H7v-3a6 6 0 0 1-2-4.5zM15 11h.01M3 10.5c-1 .5-1.3 1.6-1 2.5',
+    piggy: 'M3 12.5c0-3 2.5-5.5 5.5-5.5h5c2.5 0 4.5 2 4.5 4.5v.5l2 .5v2.5l-2 .5c-.3 1.2-1 2.2-2 2.8V20h-2.5l-.5-1.5H9L8.5 20H6v-2.6C4.2 16.5 3 14.6 3 12.5zM15.5 12h.01M9.5 7l1-2.5 2.5 2.5',
     card: 'M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 10h18M7 15h3',
     home: 'M4 11l8-7 8 7M6 10v10h12V10M10 20v-6h4v6',
     chart: 'M4 19V5M4 19h16M7 15l4-5 3 3 5-6',
@@ -1015,7 +1015,6 @@
     receipt: 'M6 3h12v18l-2-1.5L14 21l-2-1.5L10 21l-2-1.5L6 21zM9 8h6M9 12h6M9 16h4',
     tag: 'M4 4h7l9 9-7 7-9-9zM8 8h.01',
     user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
-    piggybank: 'M5 11a6 6 0 0 1 6-6h3a5 5 0 0 1 5 5v1l2 1v3l-2 1a5 5 0 0 1-2 3v2h-3v-1.5H10V21H7v-3a6 6 0 0 1-2-4.5zM15 11h.01',
   };
   const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON_PATHS[name] || ICON_PATHS.tag}"/></svg>`;
 
