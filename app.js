@@ -987,6 +987,67 @@
   };
   const emptyHtml = (icon, text, sub) => `<div class="empty">${EMPTY_ICONS[icon] || ''}<div><b>${text}</b></div>${sub ? `<div class="small">${sub}</div>` : ''}</div>`;
 
+  // Small outline icons (24x24 paths), drawn inline so they work offline and in both modes.
+  const ICON_PATHS = {
+    bank: 'M3 10l9-6 9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 18h18M3 21h18',
+    piggy: 'M5 11a6 6 0 0 1 6-6h3a5 5 0 0 1 5 5v1l2 1v3l-2 1a5 5 0 0 1-2 3v2h-3v-1.5H10V21H7v-3a6 6 0 0 1-2-4.5zM15 11h.01M3 10.5c-1 .5-1.3 1.6-1 2.5',
+    card: 'M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 10h18M7 15h3',
+    home: 'M4 11l8-7 8 7M6 10v10h12V10M10 20v-6h4v6',
+    chart: 'M4 19V5M4 19h16M7 15l4-5 3 3 5-6',
+    cart: 'M3 4h2l2.4 11h11.2L21 7H6M9 20a1 1 0 1 0 0-.01M17 20a1 1 0 1 0 0-.01',
+    car: 'M5 16l1.5-5h11L19 16M5 16h14v3H5zM7 19v1M17 19v1M8 14h.01M16 14h.01',
+    heart: 'M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z',
+    bolt: 'M13 3L5 14h6l-1 7 8-11h-6z',
+    book: 'M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 17h16M9 7h6',
+    health: 'M12 21s-8-5-8-11a4 4 0 0 1 8-1.5A4 4 0 0 1 20 10c0 6-8 11-8 11zM12 8v6M9 11h6',
+    wrench: 'M14.5 4.5a4 4 0 0 0-5 5L4 15v5h5l5.5-5.5a4 4 0 0 0 5-5l-3 3-2.5-2.5z',
+    repeat: 'M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3M18 3v4h-4M6 21v-4h4',
+    plane: 'M10 21l2-5 7-5a2 2 0 0 0-2-3l-7 3-6-2 2-2 5 1 4-4a2 2 0 0 1 3 3l-4 4 1 5z',
+    film: 'M4 5h16v14H4zM4 9h16M4 15h16M8 5v14M16 5v14',
+    smile: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9 10h.01M15 10h.01M9 14.5a4 4 0 0 0 6 0',
+    bag: 'M6 8h12l1 12H5zM9 8a3 3 0 0 1 6 0',
+    gem: 'M6 3h12l3 6-9 12L3 9zM3 9h18M9 3l3 6 3-6',
+    tax: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6',
+    run: 'M13 4a1 1 0 1 0 0-.01M6 20l4-7 3 2 2-4-3-3-4 2-3 3M14 15l3 5',
+    shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
+    percent: 'M19 5L5 19M7 9a2 2 0 1 0 0-.01M17 17a2 2 0 1 0 0-.01',
+    coins: 'M8 11a5 2.5 0 1 0 10 0 5 2.5 0 1 0-10 0M8 11v4c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5v-4M4 7a5 2.5 0 1 0 8 0',
+    receipt: 'M6 3h12v18l-2-1.5L14 21l-2-1.5L10 21l-2-1.5L6 21zM9 8h6M9 12h6M9 16h4',
+    tag: 'M4 4h7l9 9-7 7-9-9zM8 8h.01',
+    user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
+    piggybank: 'M5 11a6 6 0 0 1 6-6h3a5 5 0 0 1 5 5v1l2 1v3l-2 1a5 5 0 0 1-2 3v2h-3v-1.5H10V21H7v-3a6 6 0 0 1-2-4.5zM15 11h.01',
+  };
+  const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON_PATHS[name] || ICON_PATHS.tag}"/></svg>`;
+
+  // Which icon and color an account gets, from its Tiller type and group.
+  function accountKind(a) {
+    const g = (a.group || '').toLowerCase(), t = (a.type || '').toLowerCase();
+    if (/real estate|mortgage|loan|home/.test(g) || /mortgage|loan/.test(t)) return 'home';
+    if (isManual(a)) return 'chart';
+    if (/credit/.test(t) || /credit/.test(g)) return 'card';
+    if (/saving/.test(t)) return 'piggy';
+    if (/invest|brokerage|ira|trust|401|retire|other/.test(t) || /invest|retire/.test(g)) return 'chart';
+    return 'bank';
+  }
+  const acctIcon = (a) => { const k = accountKind(a); return `<span class="ic ic-${k}">${icon(k)}</span>`; };
+
+  // A small icon beside each budget group, picked from the group's name.
+  const GROUP_ICONS = [
+    [/food|grocer|dining|restaurant|coffee/, 'cart'], [/auto|car|gas|transport|vehicle/, 'car'], [/giving|charity|church|tithe/, 'heart'],
+    [/utilit|electric|power|water|garbage|cable|internet|phone/, 'bolt'], [/educat|school|tuition|homeschool|tutor/, 'book'],
+    [/health|medical|doctor|dental|fitness|exercise/, 'health'], [/household|home repair|maintenance|house/, 'wrench'],
+    [/subscri|storage|software|streaming/, 'repeat'], [/travel|vacation|trip/, 'plane'], [/entertain|movie|fun/, 'film'],
+    [/personal care|beauty|salon/, 'smile'], [/shop|cloth|dept|store/, 'bag'], [/jewel|watch|gift/, 'gem'], [/tax/, 'tax'],
+    [/activit|sport|hobby|range|hunt|muy|allowance/, 'run'], [/insur/, 'shield'], [/interest|fee/, 'percent'],
+    [/mortgage|rent|hoa|housing/, 'home'], [/income|paycheck|salary|distribution/, 'coins'], [/credit card/, 'card'],
+    [/transfer|savings|brokerage/, 'bank'], [/misc|other/, 'receipt'],
+  ];
+  function groupIcon(name) {
+    const n = String(name).toLowerCase();
+    const hit = GROUP_ICONS.find(([re]) => re.test(n));
+    return `<span class="gi">${icon(hit ? hit[1] : 'tag')}</span>`;
+  }
+
   // A steady color per bank, for the little dot before its name.
   const INST_COLORS = ['#1d5fa5', '#0f6e56', '#993c1d', '#7f77dd', '#993556', '#854f0b', '#3f7c96', '#5f5e5a'];
   function instDot(name) {
@@ -1017,7 +1078,7 @@
       html += `<div class="section-label"><span>${esc(g)}</span><span>${fmt0(sum(list))}</span></div><div class="card">`;
       for (const a of list) {
         const sub = [a.institution, a.number].filter(Boolean).join(' · ');
-        html += `<button class="row acct-row" data-acct="${esc(acctKey(a.name, a.number))}"><div class="name"><div>${esc(a.name)}</div>
+        html += `<button class="row acct-row" data-acct="${esc(acctKey(a.name, a.number))}">${acctIcon(a)}<div class="name"><div>${esc(a.name)}</div>
           <div class="muted small">${instDot(a.institution)}${esc(sub)}</div></div>
           <div class="amt">${fmt(a.balance)} <span class="chev">›</span></div></button>`;
       }
@@ -1219,7 +1280,7 @@
       groups.get(c.group).push(c);
     }
     for (const g of [...groups.keys()].sort((a, b) => a.localeCompare(b))) {
-      html += `<div class="section-label">${esc(g)}</div><div class="card">`;
+      html += `<div class="section-label"><span>${groupIcon(g)}${esc(g)}</span></div><div class="card">`;
       for (const c of groups.get(g).sort((a, b) => a.name.localeCompare(b.name))) {
         const status = budgetStatus(c.spent, c.budget);
         const w = c.budget ? Math.min(100, Math.max(0, (c.spent / c.budget) * 100)) : (c.spent > 0 ? 100 : 0);
@@ -1699,7 +1760,7 @@
       html += `<div class="section-label">Manual entries</div><div class="card">`;
       for (const a of manual) {
         const days = daysSince(a.updated);
-        html += `<button class="row manual-row" data-manual="${esc(a.id)}"><div class="name"><div>${esc(manualName(a))}</div>
+        html += `<button class="row manual-row" data-manual="${esc(a.id)}">${acctIcon(a)}<div class="name"><div>${esc(manualName(a))}</div>
           <div class="muted small">Updated ${days === null ? 'never' : agoDays(days)}</div></div>
           <div class="amt">${fmt0(Math.abs(a.balance))}</div><span class="chev">›</span></button>`;
       }
@@ -2668,6 +2729,14 @@
       const b = e.target.closest('.cat-opt');
       if (b) chooseCategory(b.dataset.cat);
     };
+
+    // The title starts large and shrinks into a compact bar once the page scrolls.
+    let compact = false;
+    const onScroll = () => {
+      const want = window.scrollY > 28;
+      if (want !== compact) { compact = want; document.querySelector('.topbar').classList.toggle('compact', compact); }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
 
     // Refresh when you come back to the app after a while.
     document.addEventListener('visibilitychange', () => {

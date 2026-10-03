@@ -69,7 +69,7 @@ body {
 [hidden] { display: none !important; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
-h1 { font-size: 28px; font-weight: 700; margin: 0; letter-spacing: -0.02em; }
+h1 { font-size: 30px; font-weight: 800; margin: 0; letter-spacing: -0.03em; transition: font-size 0.18s ease, transform 0.18s ease; }
 /* Money and big figures use the rounded system face where it exists (iPhone), tighter and bolder. */
 .hero .big, .rv-amt, .class-head, .row .amt, .tx .amt, .budget-top > span:last-child, .big-sm, .goal-row .budget-top > span:last-child,
 .all-amt, .tx-total b, .split-rest, .donut-total, .filled b { font-family: var(--font-num); }
@@ -95,7 +95,12 @@ h1 { font-size: 28px; font-weight: 700; margin: 0; letter-spacing: -0.02em; }
   position: sticky; top: 0; z-index: 5; background: var(--bg);
   display: flex; align-items: center; justify-content: space-between;
   padding: calc(env(safe-area-inset-top) + 10px) 16px 8px;
+  transition: background 0.18s ease, box-shadow 0.18s ease;
 }
+/* Scrolled: frosted, compact, title centered */
+.topbar.compact { justify-content: flex-end; background: var(--glass); -webkit-backdrop-filter: saturate(180%) blur(22px); backdrop-filter: saturate(180%) blur(22px);
+  box-shadow: 0 0.5px 0 var(--line); padding-top: calc(env(safe-area-inset-top) + 8px); padding-bottom: 8px; }
+.topbar.compact h1 { font-size: 17px; letter-spacing: -0.01em; font-weight: 600; position: absolute; left: 0; right: 0; text-align: center; pointer-events: none; }
 .icon-btn { background: none; border: 0; padding: 8px; color: var(--accent); border-radius: 50%; }
 .icon-btn.spinning svg { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -149,7 +154,7 @@ button.row:active, .tx:active, .budget-item:active, .goal-row:active, .all-cat:a
 .progress-total { height: 10px; margin-top: 12px; }
 
 /* Transactions */
-.tx-controls { position: sticky; top: calc(env(safe-area-inset-top) + 58px); z-index: 4; background: var(--bg); padding-bottom: 8px; }
+.tx-controls { position: sticky; top: calc(env(safe-area-inset-top) + 50px); z-index: 4; background: var(--bg); padding-bottom: 8px; }
 input[type="search"], select {
   width: 100%; padding: 10px 12px; border-radius: 10px; border: 0;
   background: var(--card); outline: none; font-size: 16px;
@@ -184,6 +189,13 @@ select { appearance: none; -webkit-appearance: none; padding-right: 28px;
 .tabbar button:active { transform: scale(0.94); }
 .tabbar svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .tabbar button.active { color: var(--accent); }
+/* Active tab: filled icon and a soft pill */
+.tabbar button span { position: relative; z-index: 1; }
+.tabbar button svg { position: relative; z-index: 1; transition: fill 0.15s; }
+.tabbar button.active svg { fill: color-mix(in srgb, var(--accent) 22%, transparent); }
+.tabbar button::before { content: ""; position: absolute; left: 50%; top: 1px; width: 58px; height: 30px; transform: translateX(-50%) scale(0.8); border-radius: 15px;
+  background: var(--accent-soft); opacity: 0; transition: opacity 0.18s, transform 0.18s; }
+.tabbar button.active::before { opacity: 1; transform: translateX(-50%) scale(1); }
 
 /* Category sheet */
 .sheet-backdrop { position: fixed; inset: 0; background: rgba(10, 8, 20, 0.4); z-index: 10; animation: fade-in 0.2s ease-out; }
@@ -495,3 +507,25 @@ button.acct-row { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }
+
+/* Account icons */
+.ic { flex-shrink: 0; width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+.ic svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ic-bank { background: #e6f1fb; color: #185fa5; }
+.ic-piggy { background: #e1f5ee; color: #0f6e56; }
+.ic-card { background: #fbeaf0; color: #993556; }
+.ic-home { background: #faece7; color: #993c1d; }
+.ic-chart { background: #eeedfe; color: #534ab7; }
+@media (prefers-color-scheme: dark) {
+  .ic-bank { background: #0c2f52; color: #85b7eb; }
+  .ic-piggy { background: #063d30; color: #5dcaa5; }
+  .ic-card { background: #4b1528; color: #ed93b1; }
+  .ic-home { background: #4a1b0c; color: #f0997b; }
+  .ic-chart { background: #26215c; color: #afa9ec; }
+}
+.acct-row .name, .manual-row .name { flex: 1; }
+
+/* Budget group icons */
+.gi { display: inline-flex; vertical-align: -3px; margin-right: 6px; }
+.gi svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
+.acct-row .name .small, .manual-row .name .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
