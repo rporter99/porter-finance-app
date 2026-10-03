@@ -139,7 +139,9 @@
         goals: demoGoals, balAgo: { a2: { d: (() => { const d = new Date(); d.setDate(d.getDate() - 95); return key(d); })(), v: 16800 } },
         accounts, categories, txns, netWorthStart: 396324,
         alerts: [
-          { when: serial(2), type: 'duplicate', title: 'Removed 1 duplicate transaction', message: 'Costco $84.12. Copies are saved on the Removed Duplicates tab.' },
+          { when: serial(2), type: 'duplicate', title: 'Removed 1 duplicate transaction', message: 'Costco $84.12. Copies are saved on the Removed Duplicates tab.', key: 'dup:1' },
+          { when: serial(30), type: 'duplicate', title: 'Removed 1 duplicate transaction', message: 'Costco $84.12. Copies are saved on the Removed Duplicates tab.', key: 'dup:1' },
+          { when: serial(60), type: 'bill', title: "Rocket Mortgage hasn't posted yet", message: 'It usually posts around the 1st.', key: `late:rocket mortgage:${key(now).slice(0, 7)}` },
           { when: serial(20), type: 'bill', title: 'Netflix.com price changed', message: 'Now -$17.99, was -$15.49.' },
           { when: serial(50), type: 'connection', title: 'Vanguard stopped updating', message: 'Last update 40 days ago. Open the Tiller Console to refresh or fix it.' },
         ],

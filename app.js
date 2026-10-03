@@ -33,6 +33,7 @@
     picking: false,
     pendingAsk: false,
     splitting: null,
+    txFrom: null,        // 'home' when Transactions was opened from an account on Accounts
     manualEditing: null, // manual account open in the value form     // transaction open in the split form   // Ask toggle in the open transaction panel, not saved until ✓
     budgetMonth: '',     // 'YYYY-MM' picked on the Budget screen; '' means this month
     connBank: null,      // bank open on the Connections screen, if any
@@ -383,7 +384,7 @@
       const bhRanges = bhIdx.every((i) => i >= 0) ? bhIdx.map((i) => `'Balance History'!${colLetter(i)}2:${colLetter(i)}`) : [];
 
       const extraRanges = [
-        has(ALERTS_TAB) ? `'${ALERTS_TAB}'!A2:D41` : null,
+        has(ALERTS_TAB) ? `'${ALERTS_TAB}'!A2:E41` : null,
         has(RULES_TAB) ? `'${RULES_TAB}'!A2:E` : null,
         has(SETTINGS_TAB) ? `'${SETTINGS_TAB}'!A2:B60` : null,
         has(GOALS_TAB) ? `'${GOALS_TAB}'!A2:E` : null,
@@ -495,7 +496,7 @@
 
       // Alerts written by the sheet's automation script (newest first).
       const alerts = alertRows.filter((r) => typeof r[0] === 'number').map((r) => ({
-        when: r[0], type: String(r[1] ?? ''), title: String(r[2] ?? ''), message: String(r[3] ?? ''),
+        when: r[0], type: String(r[1] ?? ''), title: String(r[2] ?? ''), message: String(r[3] ?? ''), key: String(r[4] ?? ''),
       }));
       // AutoCat rule suggestions still waiting for a decision.
       const rules = ruleRows.map((r, i) => ({
@@ -1444,6 +1445,7 @@
   // Opens the Transactions tab showing one account's transactions (tapped on Accounts).
   function openAccount(key) {
     state.account = key;
+    state.txFrom = 'home';   // show a "‹ Accounts" button to get back in one tap
     state.month = '';
     state.search = '';
     $('tx-search').value = '';
@@ -1479,7 +1481,8 @@
     const uncat = state.data.txns.filter((t) => t.date.startsWith(month) && !t.category && !t.reviewed).length;
     const queue = reviewQueue().length;
     const monthName = monthLabel(month);
-    $('tx-hero').innerHTML = `<div class="hero photo photo-transactions"><div class="label">${monthName}</div>
+    const back = state.txFrom === 'home' && state.account ? `<button class="back-btn" id="tx-back">‹ Accounts</button>` : '';
+    $('tx-hero').innerHTML = `${back}<div class="hero photo photo-transactions"><div class="label">${monthName}</div>
       ${uncat ? `<button class="hero-count" id="uncat-show" aria-label="Show transactions that need a category"><span class="big">${uncat}</span>
       <span class="small warn">need${uncat === 1 ? 's' : ''} categorizing ›</span></button>` : '<div class="small">All categorized</div>'}
       ${queue ? `<button class="hero-btn" id="review-open">${queue === uncat ? 'Review' : 'Review all'} (${queue})</button>` : ''}</div>`;
@@ -1727,10 +1730,29 @@
     try { localStorage.setItem(DISMISSED_KEY, JSON.stringify([...set])); } catch (_) { /* ignore */ }
   }
 
+  // An alert that has sorted itself out: a "hasn't posted yet" bill that has since posted, or a
+  // quiet account that has new transactions again.
+  function alertResolved(a) {
+    const k = a.key || '';
+    let m = /^late:(.+):(\d{4}-\d{2})$/.exec(k);
+    if (m) return state.data.txns.some((t) => t.date.startsWith(m[2]) && t.amount < 0 && merchant(t.desc) === m[1]);
+    m = /^quiet:([^:]+):(\d{4}-\d{2}-\d{2})$/.exec(k);
+    if (m) return state.data.txns.some((t) => (t.number === m[1] || t.account.trim() === m[1]) && t.date > m[2]);
+    return false;
+  }
+
   function alertsHtml() {
     const hidden = dismissedAlerts();
+    const seen = new Set();
     const recent = (state.data.alerts || [])
       .filter((a) => sheetSerialNow() - a.when <= 7 && !LIVE_TYPES.has(a.type) && !hidden.has(alertKey(a)))
+      .filter((a) => {                                   // the same alert repeated: keep only the newest
+        const id = a.key || a.title;
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      })
+      .filter((a) => !alertResolved(a))
       .slice(0, 6);
     if (!recent.length) return '';
     let h = `<div class="section-label"><span>Recent alerts</span><span class="hint-sm">Swipe left to dismiss</span></div><div class="card">`;
@@ -2471,6 +2493,7 @@
     document.querySelectorAll('.tabbar button').forEach((b) => {
       b.onclick = () => {
         if (b.dataset.tab === 'budget') { state.budgetCat = null; state.chartFull = false; }
+        if (b.dataset.tab === 'tx') state.txFrom = null;
         if (b.dataset.tab === 'connections') state.connBank = null;
         state.tab = b.dataset.tab;
         render();
@@ -2512,7 +2535,7 @@
       if (!c) return;
       if (c.dataset.clear === 'month') state.month = '';
       if (c.dataset.clear === 'show') state.show = '';
-      if (c.dataset.clear === 'account') state.account = '';
+      if (c.dataset.clear === 'account') { state.account = ''; state.txFrom = null; }
       if (c.dataset.clear === 'sort') state.sort = 'date';
       state.limit = PAGE_SIZE;
       fillFilters();
@@ -2581,6 +2604,16 @@
 
     $('tx-hero').onclick = (e) => {
       if (e.target.closest('#review-open')) { openReview(); return; }
+      if (e.target.closest('#tx-back')) {
+        state.account = '';
+        state.txFrom = null;
+        state.limit = PAGE_SIZE;
+        state.tab = 'home';
+        fillFilters();
+        render();
+        window.scrollTo(0, 0);
+        return;
+      }
       // Tapping the count lists just those transactions for that month.
       if (e.target.closest('#uncat-show')) {
         state.show = 'uncat';
