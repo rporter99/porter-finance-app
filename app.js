@@ -141,8 +141,9 @@
     const params = new URLSearchParams({
       client_id: CFG.clientId,
       redirect_uri: redirectUri(),
-      response_type: 'token',
-      scope: SCOPE,
+      response_type: 'token id_token',   // the id_token carries the account's email, used as next time's hint
+      scope: 'openid email ' + SCOPE,
+      nonce,
       include_granted_scopes: 'true',
       state: nonce,
     });
@@ -179,8 +180,19 @@
     }));
     localStorage.setItem(RETURNING_KEY, '1');
     if (p.get('authuser') !== null) localStorage.setItem(AUTHUSER_KEY, p.get('authuser'));
-    rememberAccount(p.get('access_token'));
+    // Remember the account straight from the sign-in response (email or ID), so the
+    // automatic sign-in never has to ask which account next time.
+    const who = accountFromIdToken(p.get('id_token'));
+    if (who) localStorage.setItem(HINT_KEY, who);
+    else rememberAccount(p.get('access_token'));
     return { ok: true };
+  }
+
+  function accountFromIdToken(jwt) {
+    try {
+      const body = JSON.parse(atob(jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      return body.email || body.sub || null;
+    } catch (_) { return null; }
   }
 
   // Asks Google which account this token belongs to (its ID only, no email or name) and keeps
@@ -2433,7 +2445,8 @@
     $('signin-error').textContent = error || '';
     // A quiet status line, so a stuck automatic sign-in can be diagnosed from the phone.
     const last = localStorage.getItem(LAST_SILENT_KEY);
-    const remembered = localStorage.getItem(HINT_KEY) ? 'yes' : localStorage.getItem(AUTHUSER_KEY) ? 'partly' : 'no';
+    const h = localStorage.getItem(HINT_KEY) || '';
+    const remembered = h ? (h.includes('@') ? 'yes (' + h.replace(/^(.).*(@.*)$/, '$1…$2') + ')' : 'yes (id)') : localStorage.getItem(AUTHUSER_KEY) ? 'partly' : 'no';
     $('signin-note').textContent = `Automatic sign-in: ${last && last !== 'tried' && last !== '' ? last.replace(/_/g, ' ') : 'not tried'} · account remembered: ${remembered}`;
   }
 
