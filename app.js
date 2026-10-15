@@ -29,6 +29,7 @@
     filtersOpen: false,
     showHealthy: false,
     chartRange: 'month',
+    chartScope: 'all',
     goalEditing: null,
     show: '',            // Transactions view: '' all, 'uncat', 'asked'
     picking: false,
@@ -397,6 +398,8 @@
       const settingRows = extraRanges[2] ? all[x++] : [];
       const goalRows = extraRanges[3] ? all[x++] : [];
       const setting = (name) => String((settingRows.find((r) => String(r[0] ?? '').trim() === name) || [])[1] ?? '');
+      // Optional: which categories are fixed bills (left out of the "Everyday" chart and of pace checks).
+      const fixedCats = setting('Fixed bill categories').split(',').map((v) => v.trim().toLowerCase()).filter(Boolean);
       const ignore = setting('Ignore accounts for connection alerts').split(',').map((v) => v.trim().toLowerCase()).filter(Boolean);
       // Optional header photos: "Photo: Accounts" etc. on the Automation Settings tab (direct https image links).
       const photos = {};
@@ -511,7 +514,7 @@
         count: Number(r[3]) || 0, uncategorized: Number(r[4]) || 0,
       })).filter((r) => !r.status && r.keyword && r.category);
 
-      return { accounts, categories, txns, netWorthStart, alerts, rules, ignore, photos, hasNote: !!tx.Note, hasReviewed: !!tx.Reviewed,
+      return { accounts, categories, txns, netWorthStart, alerts, rules, ignore, photos, fixedCats, hasNote: !!tx.Note, hasReviewed: !!tx.Reviewed,
         historyFrom: cutoff, hasOlder, goals, balAgo, hasAsk: !!tx.Ask };
     },
 
@@ -989,7 +992,7 @@
 
   // ---------- Rendering ----------
 
-  const TITLES = { home: 'Accounts', budget: 'Budget', tx: 'Transactions', connections: 'Connections' };
+  const TITLES = { home: 'Accounts', budget: 'Budget', tx: 'Transactions', connections: 'To do' };
 
   function render() {
     $('title').textContent = TITLES[state.tab];
@@ -1279,10 +1282,51 @@
     return [...keys].filter((k) => k <= now && k >= from).sort().reverse();
   }
 
+  // ‹ Month › : arrows step one month; tapping the name opens the full list.
   function budgetMonthSelect() {
     const cur = budgetMonth();
-    return `<select id="budget-month" class="month-select" aria-label="Month">${budgetMonths()
-      .map((k) => `<option value="${k}"${k === cur ? ' selected' : ''}>${monthLabel(k)}</option>`).join('')}${olderOption()}</select>`;
+    const months = budgetMonths();
+    const i = months.indexOf(cur);
+    const prev = months[i + 1], next = i > 0 ? months[i - 1] : null;
+    return `<div class="month-nav"><button class="mn-arrow" data-mstep="${prev || ''}" aria-label="Previous month"${prev ? '' : ' disabled'}>‹</button>
+      <select id="budget-month" class="month-select" aria-label="Month">${months
+      .map((k) => `<option value="${k}"${k === cur ? ' selected' : ''}>${monthLabel(k)}</option>`).join('')}${olderOption()}</select>
+      <button class="mn-arrow" data-mstep="${next || ''}" aria-label="Next month"${next ? '' : ' disabled'}>›</button></div>`;
+  }
+
+  function stepBudgetMonth(dir) {   // dir 1 = next month, -1 = previous
+    const months = budgetMonths();
+    const i = months.indexOf(budgetMonth());
+    const to = i < 0 ? null : months[i - dir];
+    if (!to) return;
+    state.budgetMonth = to;
+    state.chartOpen = null;
+    renderBudget();
+  }
+
+  // Fixed bills (mortgage, insurance, utilities…) are paid once a month, so they're left out of
+  // pace checks and the "Everyday" chart. "Fixed bill categories" on the Automation Settings tab
+  // overrides the guess.
+  const FIXED_NAME = /mortgage|\brent\b|insurance|utilit|electric|water|sewer|trash|internet|phone|mobile|cable|subscription|loan|hoa\b|tuition|day ?care|child ?care|charit|donation|tithe|tax/i;
+  function isFixedCat(name) {
+    const list = state.data.fixedCats;
+    if (list && list.length) return list.includes(String(name).trim().toLowerCase());
+    return FIXED_NAME.test(name);
+  }
+
+  // One line under a budget bar: how much is left, and whether spending is on pace for the month.
+  function budgetPace(c, elapsed) {
+    const left = c.budget - c.spent;
+    if (!c.budget) return { cls: 'warn', bar: 'warn', text: 'No budget' };
+    if (c.spent >= c.budget + OVER_BY) return { cls: 'over', bar: 'over', text: `${fmt0(c.spent - c.budget)} over` };
+    if (isFixedCat(c.name)) {
+      if (Math.abs(left) <= 1 || c.spent >= c.budget) return { cls: 'ok', bar: '', text: 'Paid' };
+      return { cls: '', bar: '', text: c.spent > 0.005 ? `${fmt0(left)} left` : 'Not paid yet' };
+    }
+    if (elapsed >= 1) return { cls: '', bar: '', text: `${fmt0(left)} under` };
+    const ahead = c.spent > 5 && c.spent > c.budget * elapsed * 1.1;
+    return ahead ? { cls: 'warn', bar: 'warn', text: `${fmt0(left)} left · ahead of pace` }
+      : { cls: 'ok', bar: '', text: `${fmt0(left)} left · on pace` };
   }
 
   function renderBudget() {
@@ -1344,11 +1388,14 @@
     for (const g of [...groups.keys()].sort((a, b) => a.localeCompare(b))) {
       html += `<div class="section-label"><span>${groupIcon(g)}${esc(g)}</span></div><div class="card">`;
       for (const c of groups.get(g).sort((a, b) => a.name.localeCompare(b.name))) {
-        const status = budgetStatus(c.spent, c.budget);
+        const pace = budgetPace(c, elapsed);
         const w = c.budget ? Math.min(100, Math.max(0, (c.spent / c.budget) * 100)) : (c.spent > 0 ? 100 : 0);
+        // Tick: where spending would be by today if it were spread evenly over the month.
+        const tick = elapsed > 0 && elapsed < 1 && c.budget && !isFixedCat(c.name) ? `<span class="pace-tick" style="left:${(elapsed * 100).toFixed(1)}%"></span>` : '';
         html += `<button class="budget-item" data-cat="${esc(c.name)}"><div class="budget-top"><span>${esc(c.name)}</span>
           <span>${fmt0(c.spent)} <span class="of">/ ${fmt0(c.budget)}</span> <span class="chev">›</span></span></div>
-          <div class="bar ${status}"><i style="width:${w}%"></i></div></button>`;
+          <div class="bar-wrap"><div class="bar ${pace.bar}"><i style="width:${w}%"></i></div>${tick}</div>
+          <div class="pace ${pace.cls}">${pace.text}</div></button>`;
       }
       html += '</div>';
     }
@@ -1366,17 +1413,21 @@
       if (m < from || m > month) continue;
       const c = types.get(t.category);
       if (!c || c.hidden || !/expense/i.test(c.type)) continue;
+      if (state.chartScope === 'everyday' && isFixedCat(c.name)) continue;
       sums.set(t.category, (sums.get(t.category) || 0) - t.amount);
     }
     return [...sums].filter(([, v]) => v > 0.5).sort((a, b) => b[1] - a[1]);
   }
 
   const chartLabel = (month) => (state.chartRange === 'year' ? `${month.slice(0, 4)} so far`
+    : state.chartScope === 'everyday' ? 'everyday'
     : new Date(+month.slice(0, 4), +month.slice(5, 7) - 1, 1).toLocaleDateString('en-US', { month: 'long' }));
 
   const rangeSeg = () => {
     const year = state.chartRange === 'year';
-    return `<div class="seg"><button data-range="month" class="${year ? '' : 'on'}">Month</button><button data-range="year" class="${year ? 'on' : ''}">Year</button></div>`;
+    const everyday = state.chartScope === 'everyday';
+    return `<div class="seg"><button data-scope="all" class="${everyday ? '' : 'on'}">All</button><button data-scope="everyday" class="${everyday ? 'on' : ''}">Everyday</button></div>
+      <div class="seg"><button data-range="month" class="${year ? '' : 'on'}">Month</button><button data-range="year" class="${year ? 'on' : ''}">Year</button></div>`;
   };
 
   // Donut arcs for [{ v, cls, name }] slices, starting at 12 o'clock.
@@ -1394,7 +1445,10 @@
   // Small chart on the Budget screen: top 5 categories plus Other. Tapping it opens the full chart.
   function donutHtml(month) {
     const rows = spendingByCategory(month);
-    if (!rows.length) return '';
+    if (!rows.length) {
+      return state.chartScope === 'everyday' ? `<div class="card donut-card"><div class="donut-head">${rangeSeg()}</div>
+        <div class="muted small center donut-note">No everyday spending in ${esc(state.chartRange === 'year' ? month.slice(0, 4) : monthLabel(month))}.</div></div>` : '';
+    }
     const total = rows.reduce((s, r) => s + r[1], 0);
     const top = rows.slice(0, 5);
     const other = rows.slice(5).reduce((s, r) => s + r[1], 0);
@@ -1409,8 +1463,10 @@
       <div class="donut-body"><svg viewBox="0 0 42 42" class="donut" role="img" aria-label="Spending by category">
         <circle class="track" cx="21" cy="21" r="15.915"></circle>${arcs}
         <text x="21" y="21" class="donut-total">${fmt0(total)}</text><text x="21" y="26.5" class="donut-sub">${esc(label)}</text></svg>
-      <div class="legend">${legend}</div></div></div>`;
+      <div class="legend">${legend}</div></div>${everydayNote()}</div>`;
   }
+
+  const everydayNote = () => (state.chartScope === 'everyday' ? '<div class="muted small donut-note">Leaves out fixed bills like mortgage, insurance, utilities and subscriptions.</div>' : '');
 
   // Full chart: every category, largest first. Tapping a category (or its slice) shows its
   // transactions right under it.
@@ -1483,15 +1539,21 @@
   }
 
   // Transactions in cards under date headings, or account headings when byAccount.
-  function txGroupsHtml(list, byAccount) {
+  // Date headings carry the day's net total, counted over `all` so a day cut off by "Show more"
+  // still shows its full total.
+  function txGroupsHtml(list, byAccount, all = list) {
     let html = '';
     let head = null;
+    const dayTotals = new Map();
+    if (!byAccount) for (const t of all) dayTotals.set(t.date, (dayTotals.get(t.date) || 0) + t.amount);
     for (const t of list) {
       const h = byAccount ? t.account || 'No account' : t.date;
       if (h !== head) {
         if (head !== null) html += '</div>';
         head = h;
-        html += `<div class="section-label">${esc(byAccount ? h : dayLabel(h))}</div><div class="card">`;
+        const sum = byAccount ? null : dayTotals.get(h);
+        const total = sum != null && Math.abs(sum) >= 0.005 ? `<span class="day-total${sum > 0 ? ' pos' : ''}">${sum > 0 ? '+' : ''}${fmt0(sum)}</span>` : '';
+        html += `<div class="section-label"><span>${esc(byAccount ? h : dayLabel(h))}</span>${total}</div><div class="card">`;
       }
       html += txRowHtml(t, byAccount ? dayLabel(t.date) : t.account);
     }
@@ -1605,10 +1667,13 @@
     const queue = reviewQueue().length;
     const monthName = monthLabel(month);
     const back = state.txFrom === 'home' && state.account ? `<button class="back-btn" id="tx-back">‹ Accounts</button>` : '';
+    // One number: everything waiting for review. The month's uncategorized count is a link under it.
+    const uncatLink = uncat ? `<button class="hero-count" id="uncat-show" aria-label="Show transactions that need a category">
+      <span class="small warn">${uncat} in ${esc(monthName.split(' ')[0])} need${uncat === 1 ? 's' : ''} a category ›</span></button>` : '';
     $('tx-hero').innerHTML = `${back}<div class="hero photo photo-transactions"><div class="label">${monthName}</div>
-      ${uncat ? `<button class="hero-count" id="uncat-show" aria-label="Show transactions that need a category"><span class="big">${uncat}</span>
-      <span class="small warn">need${uncat === 1 ? 's' : ''} categorizing ›</span></button>` : '<div class="small">All categorized</div>'}
-      ${queue ? `<button class="hero-btn" id="review-open">${queue === uncat ? 'Review' : 'Review all'} (${queue})</button>` : ''}</div>`;
+      ${queue ? `<div class="big">${queue} <span class="big-unit">to review</span></div>${uncatLink}
+      <button class="hero-btn" id="review-open">Review</button>`
+        : `<div class="big big-unit-only">All caught up</div>${uncatLink || '<div class="small">Everything is categorized</div>'}`}</div>`;
   }
 
   function renderTx() {
@@ -1624,7 +1689,7 @@
       html += `<div class="tx-total"><b>${list.length} transaction${list.length === 1 ? '' : 's'}</b>
         <span>${out ? `${fmt(out)} out` : ''}${out && inn ? ' · ' : ''}${inn ? `<span class="pos">+${fmt(inn)} in</span>` : ''}</span></div>`;
     }
-    html += list.length ? txGroupsHtml(shown, state.sort === 'account') : emptyHtml('search', 'No transactions match', state.search.trim() ? 'Try a shorter search, or clear a filter.' : 'Try clearing a filter.');
+    html += list.length ? txGroupsHtml(shown, state.sort === 'account', list) : emptyHtml('search', 'No transactions match', state.search.trim() ? 'Try a shorter search, or clear a filter.' : 'Try clearing a filter.');
     if (list.length > shown.length) html += `<button class="show-more" id="show-more">Show more (${list.length - shown.length} left)</button>`;
     if (state.data.hasOlder && !state.fullHistory && list.length <= shown.length) {
       html += `<button class="show-more" id="load-older">Load transactions before ${monthLabel(state.data.historyFrom.slice(0, 7))}</button>`;
@@ -1735,20 +1800,50 @@
     return { fixable };
   }
 
-  function sheetCheckHtml(issues) {
-    const { fixable } = issues;
-    if (!fixable.length) return '';
-    let h = secLabel('listcheck', 'Sheet check') + `<div class="card">`;
-    if (fixable.length) {
-      h += `<div class="row"><div class="name"><div class="wrap">${fixable.length} transaction${fixable.length === 1 ? ' uses' : 's use'} a category name that's slightly off</div>
-        <div class="muted small wrap">An extra space or capital letter, so Tiller leaves ${fixable.length === 1 ? 'it' : 'them'} out of budgets</div></div>
-        <span class="tag check">Fixable</span></div>`;
+  // To do: one row per thing that needs a decision, each with its own button.
+  function todoHtml(fix, dups) {
+    const rows = [];
+    for (const g of fix) {
+      rows.push(`<div class="row todo-row"><span class="ic ic-st-fix">${icon('plug')}</span><div class="name">
+        <div class="wrap"><b>${esc(g.name)} stopped updating</b></div>
+        <div class="muted small">${agoDays(g.days)} · reconnect it in Tiller</div></div>
+        <button class="btn-mini solid conn-bank" data-bank="${esc(g.name)}">Fix</button></div>`);
     }
-    h += '</div>';
-    if (fixable.length) {
-      h += `<button class="btn-soft btn-block" id="cat-fix"${state.fixing ? ' disabled' : ''}>${state.fixing ? 'Fixing…' : `Fix ${fixable.length} category name${fixable.length === 1 ? '' : 's'}`}</button>`;
+    const n = dups.safe.reduce((s, g) => s + g.remove.length, 0);
+    if (n) {
+      const list = dups.safe.slice(0, 3).map((g) => `${esc(g.keep.desc)} ${fmt(g.keep.amount)}`).join(' · ') + (dups.safe.length > 3 ? ' …' : '');
+      rows.push(`<div class="row todo-row">${alertIcon('duplicate')}<div class="name">
+        <div class="wrap"><b>${n} duplicate transaction${n === 1 ? '' : 's'}</b></div>
+        <div class="muted small wrap">${list}</div>
+        <div class="muted small wrap">One copy of each is kept; deleted rows are saved to the “${LOG_TAB}” tab.</div></div>
+        <button class="btn-mini danger" id="dup-delete"${state.deleting ? ' disabled' : ''}>${state.deleting ? 'Deleting…' : 'Delete'}</button></div>`);
     }
-    return h;
+    for (const g of dups.review) {
+      const t = g.copies[0];
+      rows.push(`<div class="row todo-row">${alertIcon('duplicate')}<div class="name">
+        <div class="wrap"><b>${esc(t.desc)} ${fmt(t.amount)}</b></div>
+        <div class="muted small wrap">Same ID, but the copies differ. Check these in your sheet.</div></div>
+        <span class="tag check">Review</span></div>`);
+    }
+    (state.data.rules || []).forEach((r, i) => {
+      const busy = state.ruleBusy === i;
+      rows.push(`<div class="row todo-row rule-row">${alertIcon('rule')}<div class="name">
+        <div class="wrap">${esc(r.keyword)} → <b>${esc(r.category.trim())}</b></div>
+        <div class="muted small wrap">Suggested rule · seen ${r.count} times${r.uncategorized ? ` · ${r.uncategorized} uncategorized now` : ''}</div></div>
+        <div class="rule-btns"><button class="btn-mini solid" data-rule="${i}" data-act="approve"${busy ? ' disabled' : ''}>${busy ? '…' : 'Approve'}</button>
+        <button class="btn-mini ghost" data-rule="${i}" data-act="dismiss"${busy ? ' disabled' : ''}>Dismiss</button></div></div>`);
+    });
+    const cats = categoryIssues().fixable;
+    if (cats.length) {
+      rows.push(`<div class="row todo-row"><span class="ic ic-st-check">${icon('listcheck')}</span><div class="name">
+        <div class="wrap"><b>${cats.length} transaction${cats.length === 1 ? ' has' : 's have'} a category name that's slightly off</b></div>
+        <div class="muted small wrap">An extra space or capital letter, so Tiller leaves ${cats.length === 1 ? 'it' : 'them'} out of budgets</div></div>
+        <button class="btn-mini" id="cat-fix"${state.fixing ? ' disabled' : ''}>${state.fixing ? 'Fixing…' : 'Fix'}</button></div>`);
+    }
+    if (!rows.length) return `<div class="card todo-clear"><span class="ic ic-st-ok">${icon('check')}</span><div><b>Nothing needs you right now</b>
+      <div class="muted small">New duplicates, rule suggestions and bank problems show up here.</div></div></div>`;
+    return `<div class="card todo-card">${rows.join('')}</div>` +
+      (rows.some((r) => r.includes('data-rule')) ? `<div class="footnote">Approving a rule adds it to your AutoCat tab and categorizes matching transactions that have no category.</div>` : '');
   }
 
   async function fixCategoryNames() {
@@ -1770,14 +1865,24 @@
     }
   }
 
+  // Everything on the To do screen that needs a decision: banks that need a fix, duplicates,
+  // suggested AutoCat rules and category names to fix. The tab shows how many.
+  function todoCount() {
+    const dups = duplicates();
+    return connectionGroups().filter((g) => g.status === 'fix').length +
+      (dups.safe.length ? 1 : 0) + dups.review.length + (state.data.rules || []).length +
+      (categoryIssues().fixable.length ? 1 : 0);
+  }
+
   function updateConnectionsBadge() {
     const btn = document.querySelector('.tabbar button[data-tab="connections"]');
     if (!btn || !state.data) return;
-    const dups = duplicates();
-    const cats = categoryIssues();
-    const attention = connectionGroups().some((g) => g.status === 'fix') ||
-      dups.safe.length > 0 || dups.review.length > 0 || cats.fixable.length > 0;
-    btn.classList.toggle('badge', attention);
+    const n = todoCount();
+    let b = btn.querySelector('.count-badge');
+    if (!n) { if (b) b.remove(); btn.removeAttribute('aria-label'); return; }
+    if (!b) { b = document.createElement('span'); b.className = 'count-badge'; btn.appendChild(b); }
+    b.textContent = n > 9 ? '9+' : String(n);
+    btn.setAttribute('aria-label', `To do, ${n} item${n === 1 ? '' : 's'}`);
   }
 
   function renderConnections() {
@@ -1789,18 +1894,18 @@
     const manual = state.data.accounts.filter((a) => !a.hidden && isManual(a));
     const dups = duplicates();
 
-    const parts = [];
-    if (fix.length) parts.push(`<span class="sdot fix"></span>${fix.length} need${fix.length === 1 ? 's' : ''} a fix`);
-    if (check.length) parts.push(`<span class="sdot check"></span>${check.length} to check`);
-    let html = `<div class="hero photo photo-connections"><div class="label">Bank connections</div>
-      <div class="big ${parts.length > 1 ? 'stack' : ''}">${parts.length ? parts.join('<br>') : '<span class="sdot ok"></span>All healthy'}</div></div>
+    const n = todoCount();
+    const banks = [];
+    if (fix.length) banks.push(`<span class="sdot fix"></span>${fix.length} bank${fix.length === 1 ? ' needs' : 's need'} a fix`);
+    if (check.length) banks.push(`<span class="sdot check"></span>${check.length} to check`);
+    let html = `<div class="hero photo photo-connections"><div class="label">To do</div>
+      <div class="big">${n ? `${n} thing${n === 1 ? ' needs' : 's need'} you` : 'All clear'}</div>
+      <div class="small hero-banks">${banks.length ? banks.join(' &nbsp;') : '<span class="sdot ok"></span>All banks updating'}</div></div>
       <div class="card conn-card">${lastFilledHtml()}
       <a class="btn-soft btn-block btn-link conn-console" href="${TILLER_CONSOLE}" target="_blank" rel="noopener noreferrer">Open Tiller Console</a></div>`;
 
+    html += todoHtml(fix, dups);
     html += alertsHtml();
-    if (dups.safe.length || dups.review.length) html += duplicatesHtml(dups);
-    html += rulesHtml();
-    html += sheetCheckHtml(categoryIssues());
 
     const STATUS_WORD = { ok: 'Updating normally', check: 'Check soon', fix: 'Needs a fix' };
     const section = (title, list) => {
@@ -1813,7 +1918,7 @@
       }
       return h + '</div>';
     };
-    html += section('Needs a fix', fix) + section('Check', check);
+    html += section('Check', check);
     if (ok.length) {
       html += secLabel('plug', 'Healthy') + `<div class="card"><button class="row" id="toggle-healthy"><span class="ic ic-st-ok">${icon('plug')}</span><div class="name">
         <div>${ok.length} bank${ok.length === 1 ? '' : 's'} updating normally</div>
@@ -1899,6 +2004,75 @@
     setTimeout(() => renderConnections(), 200);
   }
 
+  // Transactions list: swipe a row left to pick its category, or right to mark it reviewed
+  // (only for rows waiting in the review queue). The row is wrapped while it moves so a
+  // colored hint shows underneath.
+  function bindTxSwipes() {
+    const list = $('tx-list');
+    let row = null, wrap = null, x0 = 0, y0 = 0, dx = 0, mode = null, canReview = false;
+    const reset = () => {
+      if (!row) return;
+      const r = row, w = wrap;
+      r.style.transition = 'transform 0.2s';
+      r.style.transform = '';
+      setTimeout(() => { if (w && w.parentNode) { w.replaceWith(r); r.style.transition = ''; } }, 200);
+      row = wrap = null;
+    };
+    list.addEventListener('touchstart', (e) => {
+      const r = e.target.closest('.tx');
+      if (!r || row) return;
+      row = r; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; mode = null;
+      const t = state.data.txns[Number(r.dataset.idx)];
+      canReview = !!(t && state.data.hasReviewed && ((!t.category && !t.reviewed) || t.ask));
+    }, { passive: true });
+    list.addEventListener('touchmove', (e) => {
+      if (!row) return;
+      const mx = e.touches[0].clientX - x0, my = e.touches[0].clientY - y0;
+      if (!mode) {
+        if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+        mode = Math.abs(mx) > Math.abs(my) ? 'swipe' : 'scroll';
+        if (mode === 'scroll') { row = null; return; }
+        wrap = document.createElement('div');
+        wrap.className = 'tx-swipe';
+        wrap.innerHTML = `<div class="sw-hint sw-review">✓ Reviewed</div><div class="sw-hint sw-cat">Category</div>`;
+        row.replaceWith(wrap);
+        wrap.appendChild(row);
+        row.style.transition = 'none';
+      }
+      dx = Math.max(-140, Math.min(canReview ? 140 : 0, mx));
+      wrap.classList.toggle('left', dx < 0);
+      wrap.classList.toggle('ready', Math.abs(dx) > 80);
+      row.style.transform = `translateX(${dx}px)`;
+    }, { passive: true });
+    const end = () => {
+      if (!row || mode !== 'swipe') { row = null; return; }
+      const t = state.data.txns[Number(row.dataset.idx)];
+      const d = dx;
+      reset();
+      if (d < -80 && t) openSheet(t);
+      else if (d > 80 && t && canReview) markReviewed(t);
+    };
+    list.addEventListener('touchend', end);
+    list.addEventListener('touchcancel', () => reset());
+    // A swipe shouldn't also count as a tap.
+    list.addEventListener('click', (e) => { if (mode === 'swipe' && Math.abs(dx) > 8) { e.stopPropagation(); mode = null; } }, true);
+  }
+
+  // Swipe-right on a transaction: same as "No category needed" in the review queue.
+  async function markReviewed(t) {
+    const fields = { Reviewed: localKey(new Date()) };
+    if (t.ask) fields.Ask = '';
+    try {
+      await source.setFields(t, fields);
+      t.reviewed = true;
+      t.ask = false;
+      toast('Marked reviewed');
+      renderTx();
+    } catch (e) {
+      toast(e instanceof AuthError ? 'Your sign-in expired, so that wasn’t saved.' : (e.message || "Couldn't save."), 4000);
+    }
+  }
+
   // Swipe an alert left to dismiss it.
   function bindAlertSwipes() {
     document.querySelectorAll('#view-connections .alert-row').forEach((row) => {
@@ -1918,20 +2092,6 @@
         row.style.transform = '';
       });
     });
-  }
-
-  function rulesHtml() {
-    const rules = state.data.rules || [];
-    if (!rules.length) return '';
-    let h = secLabel('wand', 'Suggested AutoCat rules') + `<div class="card">`;
-    rules.forEach((r, i) => {
-      const busy = state.ruleBusy === i;
-      h += `<div class="row rule-row"><div class="name"><div class="wrap">${esc(r.keyword)} → <b>${esc(r.category.trim())}</b></div>
-        <div class="muted small">Seen ${r.count} times${r.uncategorized ? ` · ${r.uncategorized} uncategorized now` : ''}</div></div>
-        <div class="rule-btns"><button class="btn-mini" data-rule="${i}" data-act="approve"${busy ? ' disabled' : ''}>${busy ? '…' : 'Approve'}</button>
-        <button class="btn-mini ghost" data-rule="${i}" data-act="dismiss"${busy ? ' disabled' : ''}>Dismiss</button></div></div>`;
-    });
-    return h + `</div><div class="footnote">Approving adds the rule to your AutoCat tab and categorizes matching transactions that have no category.</div>`;
   }
 
   async function ruleAction(i, act) {
@@ -1956,33 +2116,10 @@
     }
   }
 
-  function duplicatesHtml(dups) {
-    const n = dups.safe.reduce((s, g) => s + g.remove.length, 0);
-    let h = secLabel('copy', 'Duplicate transactions') + `<div class="card dup-card">`;
-    for (const g of dups.safe) {
-      const t = g.keep;
-      h += `<div class="row"><div class="name"><div>${esc(t.desc)}</div>
-        <div class="muted small">${dayLabel(t.date)} · ${esc(t.account)} · ${g.copies.length} copies</div></div>
-        <div class="amt">${fmt(t.amount)}</div></div>`;
-    }
-    for (const g of dups.review) {
-      const t = g.copies[0];
-      h += `<div class="row"><div class="name"><div>${esc(t.desc)}</div>
-        <div class="muted small">Same ID, but the copies differ. Check these in your sheet.</div></div>
-        <span class="tag check">Review</span></div>`;
-    }
-    h += '</div>';
-    if (n) {
-      h += `<button class="btn-danger" id="dup-delete"${state.deleting ? ' disabled' : ''}>${state.deleting ? 'Deleting…' : `Delete ${n} duplicate${n === 1 ? '' : 's'}`}</button>
-        <div class="footnote">One copy of each is kept. Deleted rows are saved to the “${LOG_TAB}” tab in your sheet.</div>`;
-    }
-    return h;
-  }
-
   function renderBankDetail(name) {
     const g = connectionGroups().find((x) => x.name === name);
     if (!g) { state.connBank = null; renderConnections(); return; }
-    let html = `<button class="back-btn" id="conn-back">‹ Connections</button>
+    let html = `<button class="back-btn" id="conn-back">‹ To do</button>
       <div class="hero photo photo-connections conn-summary"><div class="big-sm">${esc(g.name)}</div>
       <div class="small">${STATUS_TAG[g.status]} <span class="muted">last update ${agoDays(g.days)}</span></div></div>
       <div class="section-label">Accounts</div><div class="card">`;
@@ -2691,10 +2828,26 @@
       if (e.target.value === OLDER) { loadOlderHistory(); return; }
       state.budgetMonth = e.target.value; renderBudget();
     };
+    // Swipe sideways on the Budget screen to move between months (left = next, right = previous).
+    let bx = null, by = 0;
+    $('view-budget').addEventListener('touchstart', (e) => {
+      bx = e.target.closest('select, .seg') || state.budgetCat ? null : e.touches[0].clientX;
+      by = e.touches[0].clientY;
+    }, { passive: true });
+    $('view-budget').addEventListener('touchend', (e) => {
+      if (bx === null) return;
+      const dx = e.changedTouches[0].clientX - bx, dy = e.changedTouches[0].clientY - by;
+      bx = null;
+      if (Math.abs(dx) > 70 && Math.abs(dy) < 40) stepBudgetMonth(dx < 0 ? 1 : -1);
+    }, { passive: true });
     $('view-budget').onclick = (e) => {
       if (e.target.closest('#budget-review')) { openReview(); return; }
       const rng = e.target.closest('[data-range]');
       if (rng) { state.chartRange = rng.dataset.range; renderBudget(); return; }
+      const scope = e.target.closest('[data-scope]');
+      if (scope) { state.chartScope = scope.dataset.scope; state.chartOpen = null; renderBudget(); return; }
+      const step = e.target.closest('[data-mstep]');
+      if (step) { if (step.dataset.mstep) { state.budgetMonth = step.dataset.mstep; state.chartOpen = null; renderBudget(); } return; }
       if (e.target.closest('#chart-open')) { state.chartFull = true; state.chartOpen = null; renderBudget(); window.scrollTo(0, 0); return; }
       if (e.target.closest('#chart-back')) { state.chartFull = false; renderBudget(); window.scrollTo(0, 0); return; }
       const slice = e.target.closest('[data-chart-cat]');
@@ -2764,6 +2917,7 @@
     };
     $('lock-btn').onclick = unlock;
     bindPullToRefresh();
+    bindTxSwipes();
     // Blur the screen in the app switcher, and ask for Face ID after 5 minutes away.
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {

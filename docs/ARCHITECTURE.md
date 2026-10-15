@@ -35,7 +35,7 @@ iPhone (home-screen web app)                 Google                      Google 
 3. **Sheet source** (`sheetSource`): `load()` reads everything in a few batched requests and returns a plain data object; the write methods (`setFields`, `setFieldBatch`, `splitTransaction`, `saveGoal`, `deleteDuplicates`, `approveRule`, `updateManualBalance`, …) each re-locate their target row by Transaction ID before writing. A `DEMO_SOURCE` in `demo-data.js` has the same shape for previews.
 4. **State**: one `state` object (current tab, filters, open panels, loaded data). `render()` redraws the current tab from state.
 5. **Loading**: `loadData()` with the write/load race protection (`trackWrites`, `writeSeq`, `reloadQueued`).
-6. **Screens**: `renderHome` (Accounts), `renderBudget` (+ `renderBudgetDetail`, `renderChartFull`), `renderTx` (+ hero, controls, list), `renderConnections` (+ bank detail). Each builds an HTML string and sets `innerHTML`.
+6. **Screens**: `renderHome` (Accounts), `renderBudget` (+ `renderBudgetDetail`, `renderChartFull`), `renderTx` (+ hero, controls, list), `renderConnections` (the To do tab, + bank detail). Each builds an HTML string and sets `innerHTML`.
 7. **Panels and flows**: transaction panel (category, note, Ask, Split), review queue, goal form, manual-value form, Face ID lock, pull-to-refresh.
 8. **Events**: `bind()` attaches one delegated click handler per screen; `start()` runs the sign-in / sheet-link / lock sequence.
 

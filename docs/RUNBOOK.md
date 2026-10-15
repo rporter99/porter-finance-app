@@ -21,7 +21,7 @@ Day-to-day operations: publishing, setting up phones, installing the automation,
 1. Open the app's URL in Safari, tap Share → **Add to Home Screen** → Add.
 2. Open it from the Home Screen (not Safari). Sign in with the Google account that has access to the sheet. If Google shows a permission screen for your email address, allow it; that's what lets later sign-ins be silent.
 3. Paste the sheet's link when asked. This happens once per phone.
-4. Connections → **This phone** → turn on Face ID lock.
+4. To do → **This phone** → turn on Face ID lock.
 5. Swipe the app away and reopen it: it should go Face ID → Accounts with no taps.
 
 Deleting the icon throws away everything in "What is stored on the phone" (see `DATA-SOURCES.md`); re-adding it means redoing steps 2–4.
@@ -49,13 +49,14 @@ Settings live on the **Automation Settings** tab (column B). Each row's column C
 | Quiet account alert (days) | A busy card with no new transactions for this many days while its balance still updates |
 | Ignore accounts for connection alerts | Last-4 digits or exact names to leave out |
 | Backups to keep / Quiet hours / Also email alerts | Housekeeping |
-| Photo: Accounts / Budget / Transactions / Connections | Optional direct https image links for the header photos |
+| Photo: Accounts / Budget / Transactions / Connections | Optional direct https image links for the header photos ("Connections" is the To do tab) |
+| Fixed bill categories | Optional, comma-separated category names. These are left out of the Budget "Everyday" chart and get Paid / Not paid yet instead of a pace check. Blank = the app guesses (mortgage, rent, insurance, utilities, phone, internet, subscriptions, loans, giving, tax…) |
 
 ## Things that have gone wrong, and the fix
 
 **Asked to sign in every launch, or shown the Google account chooser.** The phone has two Google accounts and the app lost its memory of which one to use (usually after re-adding the icon). Sign in once more from the Home Screen app, choosing the right account; it is remembered from then on. The sign-in screen's small gray status line reports whether an account is remembered.
 
-**A bank shows "Needs a fix" / "Check".** Tiller's connection to that bank needs you. Connections → tap the bank → Open Tiller Console → Refresh or Fix. The app can't do this part; Tiller has no API and banks require a human for re-approval.
+**A bank shows "Needs a fix" / "Check".** Tiller's connection to that bank needs you. To do → tap **Fix** next to the bank (or the bank under Check) → Open Tiller Console → Refresh or Fix. The app can't do this part; Tiller has no API and banks require a human for re-approval.
 
 **A card's balance updates but no new transactions arrive.** The bank feed is stuck even though the connection looks healthy. Refresh the bank in the Tiller Console; if it stays stuck, ask Tiller support to refresh that account. The automation sends a "No new … transactions since …" alert after 5 days (adjustable).
 
