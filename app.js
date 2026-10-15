@@ -1667,13 +1667,14 @@
     const queue = reviewQueue().length;
     const monthName = monthLabel(month);
     const back = state.txFrom === 'home' && state.account ? `<button class="back-btn" id="tx-back">‹ Accounts</button>` : '';
-    // One number: everything waiting for review. The month's uncategorized count is a link under it.
+    // Small print only (no big headline, so the photo shows): how many wait for review, and the
+    // month's uncategorized count as a link.
     const uncatLink = uncat ? `<button class="hero-count" id="uncat-show" aria-label="Show transactions that need a category">
       <span class="small warn">${uncat} in ${esc(monthName.split(' ')[0])} need${uncat === 1 ? 's' : ''} a category ›</span></button>` : '';
     $('tx-hero').innerHTML = `${back}<div class="hero photo photo-transactions"><div class="label">${monthName}</div>
-      ${queue ? `<div class="big">${queue} <span class="big-unit">to review</span></div>${uncatLink}
+      ${queue ? `<div class="small">${queue} to review</div>${uncatLink}
       <button class="hero-btn" id="review-open">Review</button>`
-        : `<div class="big big-unit-only">All caught up</div>${uncatLink || '<div class="small">Everything is categorized</div>'}`}</div>`;
+        : uncatLink || '<div class="small">Everything is categorized</div>'}</div>`;
   }
 
   function renderTx() {
@@ -1894,12 +1895,10 @@
     const manual = state.data.accounts.filter((a) => !a.hidden && isManual(a));
     const dups = duplicates();
 
-    const n = todoCount();
     const banks = [];
     if (fix.length) banks.push(`<span class="sdot fix"></span>${fix.length} bank${fix.length === 1 ? ' needs' : 's need'} a fix`);
     if (check.length) banks.push(`<span class="sdot check"></span>${check.length} to check`);
     let html = `<div class="hero photo photo-connections"><div class="label">To do</div>
-      <div class="big">${n ? `${n} thing${n === 1 ? ' needs' : 's need'} you` : 'All clear'}</div>
       <div class="small hero-banks">${banks.length ? banks.join(' &nbsp;') : '<span class="sdot ok"></span>All banks updating'}</div></div>
       <div class="card conn-card">${lastFilledHtml()}
       <a class="btn-soft btn-block btn-link conn-console" href="${TILLER_CONSOLE}" target="_blank" rel="noopener noreferrer">Open Tiller Console</a></div>`;

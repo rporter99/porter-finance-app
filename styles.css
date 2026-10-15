@@ -610,8 +610,6 @@ button.acct-row { font: inherit; color: inherit; }
 .donut-note { margin-top: 8px; }
 
 /* Transactions: one review number, day totals, swipe hints */
-.big-unit { font-size: 17px; font-weight: 600; letter-spacing: 0; }
-.big-unit-only { font-size: 26px; }
 .hero-count .small { margin-top: 2px; }
 .day-total { font-family: var(--font-num); text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 600; }
 .day-total.pos { color: var(--good); }
