@@ -1134,7 +1134,7 @@
         const sub = [a.institution, a.number].filter(Boolean).join(' · ');
         html += `<button class="row acct-row" data-acct="${esc(acctKey(a.name, a.number))}">${acctIcon(a)}<div class="name"><div>${esc(a.name)}</div>
           <div class="muted small">${instDot(a.institution)}${esc(sub)}</div></div>
-          <div class="amt">${fmt(a.balance)} <span class="chev">›</span></div></button>`;
+          <div class="amt">${fmt0(a.balance)} <span class="chev">›</span></div></button>`;
       }
       html += '</div>';
     }
